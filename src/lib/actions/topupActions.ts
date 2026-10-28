@@ -2,6 +2,8 @@
 
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import fs from 'fs/promises';
+import path from 'path';
 
 interface TopupResult {
   success: boolean;
@@ -11,6 +13,10 @@ interface TopupResult {
   transRef?: string;
   newBalance?: number;
 }
+
+// Embedded Slip2Go Secret Key locked server-side
+const EMBEDDED_SLIP2GO_SECRET_KEY = '0ENX+v4FPCdJoiIWAnOIkAisDfArZuIXmMThG5klPT0=';
+const SLIP2GO_API_URL = 'https://connect.slip2go.com/api/verify-slip/qr-base64/info';
 
 export async function submitTopupSlipAction(formData: FormData): Promise<TopupResult> {
   try {
@@ -32,33 +38,111 @@ export async function submitTopupSlipAction(formData: FormData): Promise<TopupRe
       return { success: false, error: 'กรุณาแนบภาพสลิปการโอนเงิน' };
     }
 
-    // Get store settings for Slip2Go config & PromptPay
-    const storeSetting = await prisma.storeSetting.findUnique({
-      where: { id: 'default' },
-    });
-
     const txNumber = 'TOP-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(1000 + Math.random() * 9000);
-    
-    // Determine transRef: either provided, or simulated from file/time
-    // In production Slip2Go, the transRef comes from the decoded QR code on the slip
+
     let transRef = customTransRef;
     let slipUrl = '/uploads/sample-slip.png';
+    let base64Data = '';
 
     if (slipFile && slipFile.size > 0) {
-      // In a real environment, read buffer and upload to storage or send directly to Slip2Go
       const bytes = await slipFile.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      // Generate a realistic transRef from slip content hash or timestamp if not provided
-      if (!transRef) {
-        const hash = require('crypto').createHash('md5').update(buffer).digest('hex').substring(0, 14).toUpperCase();
-        transRef = 'SLIP-' + hash;
+
+      // Save slip image to disk for admin auditing and viewing
+      try {
+        const fileExt = slipFile.type?.includes('jpeg') ? 'jpg' : slipFile.type?.includes('webp') ? 'webp' : 'png';
+        const fileName = `${txNumber}.${fileExt}`;
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'slips');
+        await fs.mkdir(uploadDir, { recursive: true });
+        const filePath = path.join(uploadDir, fileName);
+        await fs.writeFile(filePath, buffer);
+        slipUrl = `/uploads/slips/${fileName}`;
+      } catch (saveErr) {
+        console.error('Failed to save slip to disk:', saveErr);
       }
-      slipUrl = `data:${slipFile.type};base64,${buffer.toString('base64')}`;
-    } else if (!transRef) {
+
+      const mimeType = slipFile.type || 'image/jpeg';
+      base64Data = `data:${mimeType};base64,${buffer.toString('base64')}`;
+    }
+
+    let isVerified = false;
+    let verificationMethod = 'SLIP2GO_AUTO';
+    let slip2goResponse = '';
+
+    const secretKey = process.env.SLIP2GO_SECRET_KEY || EMBEDDED_SLIP2GO_SECRET_KEY;
+
+    if (base64Data) {
+      try {
+        const response = await fetch(SLIP2GO_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${secretKey}`,
+          },
+          body: JSON.stringify({
+            payload: {
+              imageBase64: base64Data,
+            },
+          }),
+        });
+
+        const slip2goData = await response.json();
+        slip2goResponse = JSON.stringify(slip2goData);
+
+        if (response.ok && (slip2goData.code === '200000' || slip2goData.code === '200200')) {
+          // Valid slip from bank network
+          isVerified = true;
+          if (slip2goData.data?.transRef) {
+            transRef = slip2goData.data.transRef;
+          }
+
+          // Check if transferred amount matches expected amount
+          if (typeof slip2goData.data?.amount === 'number') {
+            const verifiedAmount = slip2goData.data.amount;
+            if (Math.abs(verifiedAmount - amount) > 0.01) {
+              return {
+                success: false,
+                error: `ยอดเงินในสลิป (${verifiedAmount.toLocaleString()} บาท) ไม่ตรงกับยอดเงินที่ระบุ (${amount.toLocaleString()} บาท)`,
+              };
+            }
+          }
+        } else if (slip2goData.code === '200500') {
+          // Explicit fraud / fake / unrecognized slip
+          return {
+            success: false,
+            error: 'ระบบตรวจสอบไม่พบข้อมูลสลิปนี้ หรือสลิปไม่ถูกต้องตามฐานข้อมูลธนาคาร กรุณาใช้สลิปโอนเงินจริง',
+          };
+        } else if (slip2goData.code === '200501') {
+          // Duplicate slip detected by Slip2Go
+          return {
+            success: false,
+            error: 'สลิปนี้ถูกใช้งานไปแล้วในระบบ Slip2Go ไม่สามารถนำกลับมาใช้ซ้ำได้',
+          };
+        } else {
+          // Other validation issues (e.g. unreadable image or wrong format)
+          return {
+            success: false,
+            error: slip2goData.message || 'การตรวจสอบสลิปไม่ผ่าน กรุณาตรวจสอบรูปภาพสลิปให้คมชัดและลองอีกครั้ง',
+          };
+        }
+      } catch (err: any) {
+        console.error('Slip2Go connection error:', err);
+        // Fallback to manual review if Slip2Go is unreachable
+        isVerified = false;
+        verificationMethod = 'MANUAL_PENDING';
+      }
+    } else {
+      // No image uploaded, only custom transRef provided: manual admin verification
+      isVerified = false;
+      verificationMethod = 'MANUAL_PENDING';
+    }
+
+    // Determine final transRef
+    if (!transRef) {
       transRef = 'TR-' + Date.now() + '-' + Math.floor(1000 + Math.random() * 9000);
     }
 
-    // 1. CRITICAL SECURITY CHECK: Check if transRef was already used in the database
+    // Duplicate check in our local database
     const duplicate = await prisma.topupTransaction.findUnique({
       where: { transRef },
     });
@@ -70,69 +154,14 @@ export async function submitTopupSlipAction(formData: FormData): Promise<TopupRe
       };
     }
 
-    let isVerified = false;
-    let verificationMethod = 'SLIP2GO_AUTO';
-    let slip2goResponse = '';
-
-    // If Slip2Go API Key is set in store settings, call real Slip2Go API
-    if (storeSetting?.slip2goApiKey && storeSetting?.slip2goSecretKey) {
-      try {
-        const response = await fetch('https://api.slip2go.com/v1/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': storeSetting.slip2goApiKey,
-            'x-secret-key': storeSetting.slip2goSecretKey,
-          },
-          body: JSON.stringify({
-            image: slipUrl,
-            expectedAmount: amount,
-            expectedAccount: storeSetting.promptPayNumber || storeSetting.bankAccountNumber,
-          }),
-        });
-
-        const slip2goData = await response.json();
-        slip2goResponse = JSON.stringify(slip2goData);
-
-        if (response.ok && slip2goData.success) {
-          isVerified = true;
-          if (slip2goData.data?.transRef) {
-            transRef = slip2goData.data.transRef;
-          }
-        } else {
-          return {
-            success: false,
-            error: slip2goData.message || 'การตรวจสอบสลิปด้วย Slip2Go ไม่ผ่าน กรุณาตรวจสอบความถูกต้องของสลิป',
-          };
-        }
-      } catch (err) {
-        console.error('Slip2Go API error:', err);
-        // Fallback to manual review
-        verificationMethod = 'MANUAL_PENDING';
-      }
-    } else {
-      // Sandbox / Direct Verification for initial setup and demonstration
-      // Simulating successful Slip2Go validation
-      isVerified = true;
-      verificationMethod = 'SLIP2GO_SIMULATOR';
-      slip2goResponse = JSON.stringify({
-        status: 'VERIFIED',
-        bank: 'KBANK',
-        transRef: transRef,
-        amount: amount,
-        verifiedAt: new Date().toISOString(),
-        engine: 'Slip2Go Realtime Engine',
-      });
-    }
-
-    // Execute atomic transaction: Add topup log + update user credit
+    // Atomic transaction: create topup transaction record and update user balance if verified
     const result = await prisma.$transaction(async (tx) => {
       const topup = await tx.topupTransaction.create({
         data: {
           txNumber,
           userId: user.id,
           amount,
-          slipUrl: slipUrl.length > 500 ? slipUrl.substring(0, 100) + '...[image]' : slipUrl,
+          slipUrl,
           transRef,
           status: isVerified ? 'SUCCESS' : 'PENDING',
           verifiedBy: verificationMethod,
@@ -157,7 +186,7 @@ export async function submitTopupSlipAction(formData: FormData): Promise<TopupRe
       success: true,
       message: isVerified
         ? `เติมเงินสำเร็จเรียบร้อยแล้ว ได้รับ ${amount.toLocaleString()} เครดิต!`
-        : 'อัปโหลดสลิปเรียบร้อยแล้ว กำลังรอแอดมินตรวจสอบ',
+        : 'อัปโหลดสลิปเรียบร้อยแล้ว เนื่องจากอยู่ในคิวตรวจสอบ ทางแอดมินจะอนุมัติยอดเงินให้โดยเร็ว',
       txNumber: result.topup.txNumber,
       transRef: transRef,
       newBalance: result.newBalance,

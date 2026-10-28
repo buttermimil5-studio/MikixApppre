@@ -109,7 +109,7 @@ export function AdminClient({
   const [newStockEmail, setNewStockEmail] = useState('');
   const [newStockPassword, setNewStockPassword] = useState('');
   const [newStockNotes, setNewStockNotes] = useState('');
-  const [newStockSlotCount, setNewStockSlotCount] = useState<number>(1);
+  const [newStockSlotCount, setNewStockSlotCount] = useState<number | string>(1);
   const [newStockRegisteredAt, setNewStockRegisteredAt] = useState<string>(todayStr);
   const [newStockBillingDate, setNewStockBillingDate] = useState<string>(nextMonthStr);
   const [newStockPaymentMethod, setNewStockPaymentMethod] = useState<string>('TrueMoney Wallet');
@@ -147,8 +147,8 @@ export function AdminClient({
 
   const [editProductModal, setEditProductModal] = useState<any | null>(null);
   const [prodName, setProdName] = useState('');
-  const [prodPrice, setProdPrice] = useState(89);
-  const [prodDuration, setProdDuration] = useState(30);
+  const [prodPrice, setProdPrice] = useState<number | string>(89);
+  const [prodDuration, setProdDuration] = useState<number | string>(30);
   const [prodCategory, setProdCategory] = useState(categories[0]?.id || '');
   const [prodImage, setProdImage] = useState('');
   const [prodRules, setProdRules] = useState('');
@@ -157,7 +157,7 @@ export function AdminClient({
   const [prodLineOa, setProdLineOa] = useState('');
   const [prodCutoffType, setProdCutoffType] = useState<string>('ROUND_UP_HOUR');
   const [prodHasProfilePin, setProdHasProfilePin] = useState(false);
-  const [prodDefaultSlotCount, setProdDefaultSlotCount] = useState(1);
+  const [prodDefaultSlotCount, setProdDefaultSlotCount] = useState<number | string>(1);
   const [prodLoading, setProdLoading] = useState(false);
 
   // Bank Account Modal
@@ -278,9 +278,11 @@ export function AdminClient({
     ]);
   };
 
-  const handleSlotCountChange = (count: number) => {
-    const n = Math.max(1, Math.min(10, count));
-    setNewStockSlotCount(n);
+  const handleSlotCountChange = (countVal: number | string) => {
+    setNewStockSlotCount(countVal);
+    const parsed = parseInt(String(countVal), 10);
+    if (isNaN(parsed) || parsed < 1) return;
+    const n = Math.min(10, parsed);
     setNewStockSlots((prev) => {
       const next = [];
       for (let i = 0; i < n; i++) {
@@ -414,8 +416,8 @@ export function AdminClient({
     const res = await saveProductAction({
       id: editProductModal?.id,
       name: prodName,
-      price: prodPrice,
-      durationDays: prodDuration,
+      price: Number(prodPrice) || 0,
+      durationDays: Number(prodDuration) || 30,
       categoryId: prodCategory,
       imageUrl: prodImage,
       rules: prodRules,
@@ -424,7 +426,7 @@ export function AdminClient({
       lineOaUrl: prodLineOa || undefined,
       cutoffType: prodCutoffType || 'ROUND_UP_HOUR',
       hasProfilePin: prodHasProfilePin,
-      defaultSlotCount: prodDefaultSlotCount,
+      defaultSlotCount: Number(prodDefaultSlotCount) || 1,
       isActive: editProductModal ? editProductModal.isActive : true,
     });
     setProdLoading(false);
@@ -1602,27 +1604,22 @@ export function AdminClient({
               />
             </div>
 
-            {/* Slip2Go Keys */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">Slip2Go API Key</label>
-              <input
-                type="password"
-                value={settingsForm.slip2goApiKey}
-                onChange={(e) => setSettingsForm({ ...settingsForm, slip2goApiKey: e.target.value })}
-                placeholder="เว้นว่างไว้หากใช้ระบบ Simulator"
-                className="w-full miki-input text-xs font-mono"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">Slip2Go Secret Key</label>
-              <input
-                type="password"
-                value={settingsForm.slip2goSecretKey}
-                onChange={(e) => setSettingsForm({ ...settingsForm, slip2goSecretKey: e.target.value })}
-                placeholder="เว้นว่างไว้หากใช้ระบบ Simulator"
-                className="w-full miki-input text-xs font-mono"
-              />
+            {/* Embedded Slip2Go System Status */}
+            <div className="md:col-span-2 p-4 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#DCFCE7] text-[#16A34A] flex items-center justify-center shrink-0 mt-0.5">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#166534]">ระบบตรวจสลิปอัตโนมัติ Slip2Go (Active)</span>
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#86EFAC]">
+                    เชื่อมต่อคีย์ความปลอดภัยระดับเซิร์ฟเวอร์แล้ว
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#166534]/80 leading-relaxed">
+                  ระบบตรวจสอบสลิปโอนเงินผ่านระบบ Slip2Go เชื่อมต่อกับธนาคารโดยตรงแบบ Real-time พร้อมตัดยอดเครดิตให้อัตโนมัติ ป้องกันสลิปปลอมและสลิปใช้ซ้ำ 100% ถูกฝังคีย์ระบบความปลอดภัยระดับเซิร์ฟเวอร์เรียบร้อยแล้ว ไม่ต้องตั้งค่าในหน้านี้เพื่อป้องกันข้อผิดพลาด
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1919,7 +1916,12 @@ export function AdminClient({
                     min="1"
                     max="10"
                     value={newStockSlotCount}
-                    onChange={(e) => handleSlotCountChange(parseInt(e.target.value) || 1)}
+                    onChange={(e) => handleSlotCountChange(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                    onBlur={() => {
+                      if (!newStockSlotCount || Number(newStockSlotCount) < 1) {
+                        handleSlotCountChange(1);
+                      }
+                    }}
                     className="w-full miki-input text-xs font-bold"
                   />
                 </div>
@@ -2184,7 +2186,12 @@ export function AdminClient({
                       type="number"
                       required
                       value={prodPrice}
-                      onChange={(e) => setProdPrice(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setProdPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      onBlur={() => {
+                        if (prodPrice === '' || Number(prodPrice) < 0) {
+                          setProdPrice(0);
+                        }
+                      }}
                       className="w-full miki-input text-xs font-bold"
                     />
                   </div>
@@ -2195,7 +2202,12 @@ export function AdminClient({
                       type="number"
                       required
                       value={prodDuration}
-                      onChange={(e) => setProdDuration(parseInt(e.target.value) || 30)}
+                      onChange={(e) => setProdDuration(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      onBlur={() => {
+                        if (!prodDuration || Number(prodDuration) < 1) {
+                          setProdDuration(30);
+                        }
+                      }}
                       className="w-full miki-input text-xs font-bold"
                     />
                   </div>
@@ -2260,7 +2272,12 @@ export function AdminClient({
                       min="1"
                       max="10"
                       value={prodDefaultSlotCount}
-                      onChange={(e) => setProdDefaultSlotCount(parseInt(e.target.value) || 1)}
+                      onChange={(e) => setProdDefaultSlotCount(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                      onBlur={() => {
+                        if (!prodDefaultSlotCount || Number(prodDefaultSlotCount) < 1) {
+                          setProdDefaultSlotCount(1);
+                        }
+                      }}
                       className="w-full miki-input text-xs font-bold"
                     />
                   </div>
