@@ -17,19 +17,35 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+interface BankAccountItem {
+  id: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  promptPayNumber?: string | null;
+  qrCodeUrl?: string | null;
+  isPromptPay: boolean;
+  isActive: boolean;
+}
+
 interface TopupClientProps {
   user: any;
   storeSetting: any;
+  bankAccounts?: BankAccountItem[];
   recentTopups: any[];
 }
 
 export function TopupClient({
   user,
   storeSetting,
+  bankAccounts = [],
   recentTopups: initialTopups,
 }: TopupClientProps) {
   const [amount, setAmount] = useState<number>(100);
   const [customAmount, setCustomAmount] = useState<string>('100');
+  const [selectedBankId, setSelectedBankId] = useState<string>(
+    bankAccounts.length > 0 ? bankAccounts[0].id : 'default'
+  );
   const [slipFile, setSlipFile] = useState<File | null>(null);
   const [slipPreview, setSlipPreview] = useState<string | null>(null);
   const [transRef, setTransRef] = useState<string>('');
@@ -66,9 +82,21 @@ export function TopupClient({
     }
   };
 
+  const activeBank = bankAccounts.length > 0
+    ? (bankAccounts.find((b) => b.id === selectedBankId) || bankAccounts[0])
+    : null;
+
+  const currentBankName = activeBank ? activeBank.bankName : (storeSetting?.bankName || 'ธนาคารกสิกรไทย');
+  const currentAccountName = activeBank ? activeBank.accountName : (storeSetting?.bankAccountName || 'มิคิ สโตร์');
+  const currentAccountNumber = activeBank ? activeBank.accountNumber : (storeSetting?.bankAccountNumber || '000-0-00000-0');
+  const currentPromptPay = activeBank
+    ? (activeBank.promptPayNumber || (activeBank.isPromptPay ? activeBank.accountNumber : null))
+    : (storeSetting?.promptPayNumber || '0899999999');
+  const currentQrUrl = activeBank?.qrCodeUrl || storeSetting?.bankQrUrl;
+
   const handleCopyAccount = () => {
-    if (storeSetting?.bankAccountNumber) {
-      navigator.clipboard.writeText(storeSetting.bankAccountNumber.replace(/-/g, ''));
+    if (currentAccountNumber) {
+      navigator.clipboard.writeText(currentAccountNumber.replace(/-/g, ''));
       setCopiedBank(true);
       setTimeout(() => setCopiedBank(false), 2000);
     }
@@ -153,32 +181,66 @@ export function TopupClient({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left Column: Bank Account & PromptPay QR */}
         <div className="miki-card p-6 space-y-5 bg-white border border-[#E8DCCF]">
-          <h2 className="font-extrabold text-sm sm:text-base text-[#5D4037] flex items-center gap-2 border-b border-[#E8DCCF] pb-3">
-            <Building className="w-4 h-4 text-[#FFB4A2]" />
-            <span>ช่องทางการชำระเงิน</span>
+          <h2 className="font-extrabold text-sm sm:text-base text-[#5D4037] flex items-center justify-between border-b border-[#E8DCCF] pb-3">
+            <span className="flex items-center gap-2">
+              <Building className="w-4 h-4 text-[#FFB4A2]" />
+              <span>ช่องทางการชำระเงิน</span>
+            </span>
+            {bankAccounts.length > 1 && (
+              <span className="text-[11px] font-normal text-[#8D6E63]">
+                มีให้เลือก {bankAccounts.length} บัญชี
+              </span>
+            )}
           </h2>
+
+          {/* Multiple Bank Selection Pills (if admin added bank accounts) */}
+          {bankAccounts.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-[#8D6E63]">เลือกบัญชีรับโอนเงิน:</label>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1.5">
+                {bankAccounts.map((b) => {
+                  const isSelected = (activeBank?.id === b.id);
+                  return (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setSelectedBankId(b.id)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border shadow-xs ${
+                        isSelected
+                          ? 'bg-[#5D4037] text-white border-[#5D4037] scale-102'
+                          : 'bg-white text-[#5D4037] border-[#FFD9CE] hover:bg-[#FFF8F3]'
+                      }`}
+                    >
+                      {b.bankName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Bank Info Card */}
           <div className="p-4 rounded-2xl bg-[#FDFBF7] border border-[#FFD9CE] space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#8D6E63]">ธนาคาร</span>
+              <span className="text-xs font-bold text-[#8D6E63]">ธนาคาร / ช่องทาง</span>
               <span className="text-xs font-black text-[#5D4037]">
-                {storeSetting?.bankName || 'ธนาคารกสิกรไทย'}
+                {currentBankName}
               </span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[#8D6E63]">ชื่อบัญชี</span>
               <span className="text-xs font-black text-[#5D4037]">
-                {storeSetting?.bankAccountName || 'มิคิ สโตร์'}
+                {currentAccountName}
               </span>
             </div>
 
             <div className="space-y-1 pt-1 border-t border-[#E8DCCF]">
               <span className="text-xs font-bold text-[#8D6E63]">เลขที่บัญชี</span>
               <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#FFD9CE] text-sm font-mono font-bold text-[#5D4037]">
-                <span>{storeSetting?.bankAccountNumber || '000-0-00000-0'}</span>
+                <span>{currentAccountNumber}</span>
                 <button
+                  type="button"
                   onClick={handleCopyAccount}
                   className="p-1 rounded-lg hover:bg-[#FFF8F3] text-[#E5989B] transition-colors"
                   title="คัดลอกเลขบัญชี"
@@ -188,11 +250,11 @@ export function TopupClient({
               </div>
             </div>
 
-            {storeSetting?.promptPayNumber && (
+            {currentPromptPay && (
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className="font-bold text-[#8D6E63]">พร้อมเพย์ / วอลเล็ท:</span>
                 <span className="font-mono font-extrabold text-[#5D4037]">
-                  {storeSetting.promptPayNumber}
+                  {currentPromptPay}
                 </span>
               </div>
             )}
@@ -200,8 +262,9 @@ export function TopupClient({
 
           {/* 3D Flip Card: Side 1 = Real PromptPay QR, Side 2 = Static Bank QR */}
           {(() => {
+            const promptPayTarget = currentPromptPay || '0899999999';
             const promptPayPayload = generatePromptPayPayload(
-              storeSetting?.promptPayNumber || '0899999999',
+              promptPayTarget,
               amount > 0 ? amount : undefined
             );
             const promptPayQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
@@ -218,14 +281,16 @@ export function TopupClient({
                         <QrCode className="w-4 h-4" />
                         <span>QR PromptPay (สแกนจ่ายได้จริง)</span>
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setIsFlipped(true)}
-                        className="flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#6D4C41] border border-[#FFD9CE] hover:bg-[#FFFDF5] shadow-xs active:scale-95 transition-all"
-                      >
-                        <RotateCcw className="w-3 h-3 text-[#FFB4A2]" />
-                        <span>กดพลิกดู QR บัญชี</span>
-                      </button>
+                      {currentQrUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setIsFlipped(true)}
+                          className="flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#6D4C41] border border-[#FFD9CE] hover:bg-[#FFFDF5] shadow-xs active:scale-95 transition-all"
+                        >
+                          <RotateCcw className="w-3 h-3 text-[#FFB4A2]" />
+                          <span>ดู QR ธนาคาร</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="w-48 h-48 mx-auto bg-white p-3 rounded-2xl border border-[#FFD9CE] shadow-xs flex items-center justify-center">
@@ -239,7 +304,7 @@ export function TopupClient({
 
                     <div className="flex items-center justify-between px-2 text-xs">
                       <span className="text-[#8D6E63] font-medium">
-                        พร้อมเพย์: {storeSetting?.promptPayNumber || '-'}
+                        พร้อมเพย์: {promptPayTarget}
                       </span>
                       <span className="font-extrabold text-[#E5989B]">{amount} บาท</span>
                     </div>
@@ -258,15 +323,15 @@ export function TopupClient({
                         className="flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#6D4C41] border border-[#FFD9CE] hover:bg-[#FFF8F3] shadow-xs active:scale-95 transition-all"
                       >
                         <RotateCcw className="w-3 h-3 text-[#E5989B]" />
-                        <span>กดพลิกกลับไป PromptPay</span>
+                        <span>กลับไป PromptPay</span>
                       </button>
                     </div>
 
                     <div className="w-48 h-48 mx-auto bg-white p-3 rounded-2xl border border-[#FFD9CE] shadow-xs flex items-center justify-center overflow-hidden">
-                      {storeSetting?.bankQrUrl ? (
+                      {currentQrUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={storeSetting.bankQrUrl}
+                          src={currentQrUrl}
                           alt="Bank Account QR Code"
                           className="w-full h-full object-contain"
                         />
@@ -281,9 +346,9 @@ export function TopupClient({
                     </div>
 
                     <div className="flex items-center justify-between px-2 text-xs">
-                      <span className="text-[#8D6E63] font-medium">{storeSetting?.bankName || 'ธนาคาร'}</span>
+                      <span className="text-[#8D6E63] font-medium">{currentBankName}</span>
                       <span className="font-mono font-bold text-[#5D4037]">
-                        {storeSetting?.bankAccountNumber || '-'}
+                        {currentAccountNumber}
                       </span>
                     </div>
                   </div>

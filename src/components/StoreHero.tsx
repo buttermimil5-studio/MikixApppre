@@ -3,14 +3,67 @@
 import React, { useState, useEffect } from 'react';
 import { FacebookIcon, InstagramIcon } from './CuteIcons';
 import { ShokupanIcon, CroissantIcon, WheatStalkIcon } from './BakeryLineIcons';
-import { MessageCircle } from 'lucide-react';
+import {
+  MessageCircle,
+  Globe,
+  Send,
+  Share2,
+  Music2,
+  Phone,
+  Mail,
+  Link2,
+} from 'lucide-react';
+
+interface ContactItem {
+  id: string;
+  title: string;
+  url: string;
+  handle: string;
+  iconName?: string;
+  sortOrder?: number;
+}
 
 interface StoreHeroProps {
   storeSetting: any;
+  contacts?: ContactItem[];
 }
 
-export function StoreHero({ storeSetting }: StoreHeroProps) {
-  const hasContact = storeSetting?.contactLine || storeSetting?.contactFacebook || storeSetting?.contactInstagram;
+function ContactIcon({ name }: { name?: string }) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('line') || n.includes('chat') || n.includes('message')) {
+    return <MessageCircle className="w-3.5 h-3.5 text-[#2E7D32]" />;
+  }
+  if (n.includes('facebook') || n.includes('fb')) {
+    return <FacebookIcon className="w-3.5 h-3.5 text-[#2563EB]" />;
+  }
+  if (n.includes('ig') || n.includes('instagram')) {
+    return <InstagramIcon className="w-3.5 h-3.5 text-[#E5989B]" />;
+  }
+  if (n.includes('tiktok') || n.includes('music')) {
+    return <Music2 className="w-3.5 h-3.5 text-[#111827]" />;
+  }
+  if (n.includes('telegram') || n.includes('send')) {
+    return <Send className="w-3.5 h-3.5 text-[#0284C7]" />;
+  }
+  if (n.includes('phone') || n.includes('tel')) {
+    return <Phone className="w-3.5 h-3.5 text-[#D97706]" />;
+  }
+  if (n.includes('mail') || n.includes('email')) {
+    return <Mail className="w-3.5 h-3.5 text-[#7C3AED]" />;
+  }
+  if (n.includes('globe') || n.includes('web')) {
+    return <Globe className="w-3.5 h-3.5 text-[#059669]" />;
+  }
+  return <Link2 className="w-3.5 h-3.5 text-[#8D6E63]" />;
+}
+
+export function StoreHero({ storeSetting, contacts = [] }: StoreHeroProps) {
+  const hasDynamicContacts = contacts && contacts.length > 0;
+  const hasLegacyContact =
+    storeSetting?.contactLine ||
+    storeSetting?.contactFacebook ||
+    storeSetting?.contactInstagram;
+  const showContactSection = hasDynamicContacts || hasLegacyContact;
   const [isTyping, setIsTyping] = useState(true);
 
   useEffect(() => {
@@ -142,7 +195,7 @@ export function StoreHero({ storeSetting }: StoreHeroProps) {
       </div>
 
       {/* 4. Dedicated Contact Channels Row */}
-      {hasContact && (
+      {showContactSection && (
         <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-white border border-[#E8DCCF] shadow-[0_4px_16px_rgba(141,110,99,0.06)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#FFF8E7] border border-[#FFD9CE] flex items-center justify-center text-[#8D6E63] flex-shrink-0">
@@ -155,52 +208,70 @@ export function StoreHero({ storeSetting }: StoreHeroProps) {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
-            {storeSetting?.contactLine && (
-              <a
-                href={
-                  storeSetting.contactLine.startsWith('http')
-                    ? storeSetting.contactLine
-                    : `https://line.me/R/ti/p/${storeSetting.contactLine}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9] hover:bg-[#C8E6C9] transition-all active:scale-95 shadow-xs"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>LINE: {storeSetting.contactLine}</span>
-              </a>
-            )}
+            {/* Dynamic Contacts configured by Admin */}
+            {hasDynamicContacts ? (
+              contacts.map((c) => (
+                <a
+                  key={c.id}
+                  href={c.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFEFE8] hover:border-[#FFB4A2] transition-all active:scale-95 shadow-xs"
+                >
+                  <ContactIcon name={c.iconName || c.title} />
+                  <span>{c.title}: {c.handle}</span>
+                </a>
+              ))
+            ) : (
+              <>
+                {storeSetting?.contactLine && (
+                  <a
+                    href={
+                      storeSetting.contactLine.startsWith('http')
+                        ? storeSetting.contactLine
+                        : `https://line.me/R/ti/p/${storeSetting.contactLine}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9] hover:bg-[#C8E6C9] transition-all active:scale-95 shadow-xs"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-[#2E7D32]" />
+                    <span>LINE: {storeSetting.contactLine}</span>
+                  </a>
+                )}
 
-            {storeSetting?.contactFacebook && (
-              <a
-                href={
-                  storeSetting.contactFacebook.startsWith('http')
-                    ? storeSetting.contactFacebook
-                    : `https://facebook.com/${storeSetting.contactFacebook}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] hover:bg-[#DBEAFE] transition-all active:scale-95 shadow-xs"
-              >
-                <FacebookIcon className="w-3.5 h-3.5" />
-                <span>Facebook: {storeSetting.contactFacebook}</span>
-              </a>
-            )}
+                {storeSetting?.contactFacebook && (
+                  <a
+                    href={
+                      storeSetting.contactFacebook.startsWith('http')
+                        ? storeSetting.contactFacebook
+                        : `https://facebook.com/${storeSetting.contactFacebook}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] hover:bg-[#DBEAFE] transition-all active:scale-95 shadow-xs"
+                  >
+                    <FacebookIcon className="w-3.5 h-3.5" />
+                    <span>Facebook: {storeSetting.contactFacebook}</span>
+                  </a>
+                )}
 
-            {storeSetting?.contactInstagram && (
-              <a
-                href={
-                  storeSetting.contactInstagram.startsWith('http')
-                    ? storeSetting.contactInstagram
-                    : `https://instagram.com/${storeSetting.contactInstagram}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] transition-all active:scale-95 shadow-xs"
-              >
-                <InstagramIcon className="w-3.5 h-3.5" />
-                <span>Instagram: {storeSetting.contactInstagram}</span>
-              </a>
+                {storeSetting?.contactInstagram && (
+                  <a
+                    href={
+                      storeSetting.contactInstagram.startsWith('http')
+                        ? storeSetting.contactInstagram
+                        : `https://instagram.com/${storeSetting.contactInstagram}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] transition-all active:scale-95 shadow-xs"
+                  >
+                    <InstagramIcon className="w-3.5 h-3.5" />
+                    <span>Instagram: {storeSetting.contactInstagram}</span>
+                  </a>
+                )}
+              </>
             )}
           </div>
         </div>

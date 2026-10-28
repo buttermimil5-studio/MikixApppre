@@ -12,6 +12,8 @@ import {
   getStoreSettings,
   getAdminAuditLogs,
   getAdminOrders,
+  getBankAccounts,
+  getStoreContacts,
 } from '@/lib/actions/adminActions';
 import { AdminClient } from './AdminClient';
 
@@ -22,18 +24,31 @@ export default async function AdminPage() {
     redirect('/login?redirect=/admin');
   }
 
-  const [stats, stocks, products, users, topups, storeSetting, auditLogs, categories, orders] =
-    await Promise.all([
-      getAdminDashboardStats(),
-      getAdminStocks(),
-      getAdminProducts(),
-      getAdminUsers(),
-      getAdminTopupTransactions(),
-      getStoreSettings(),
-      getAdminAuditLogs(),
-      prisma.category.findMany(),
-      getAdminOrders(),
-    ]);
+  const [
+    stats,
+    stocks,
+    products,
+    users,
+    topups,
+    storeSetting,
+    auditLogs,
+    categories,
+    orders,
+    bankAccounts,
+    storeContacts,
+  ] = await Promise.all([
+    getAdminDashboardStats(),
+    getAdminStocks(),
+    getAdminProducts(),
+    getAdminUsers(),
+    getAdminTopupTransactions(),
+    getStoreSettings(),
+    getAdminAuditLogs(),
+    prisma.category.findMany(),
+    getAdminOrders(),
+    getBankAccounts(),
+    getStoreContacts(),
+  ]);
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col">
@@ -50,6 +65,8 @@ export default async function AdminPage() {
           initialAuditLogs={auditLogs}
           categories={categories}
           initialOrders={orders}
+          initialBankAccounts={bankAccounts}
+          initialContacts={storeContacts}
         />
       </main>
     </div>

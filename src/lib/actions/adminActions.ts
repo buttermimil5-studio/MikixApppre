@@ -181,6 +181,17 @@ export async function getAdminStocks() {
 
   return stocks.map((s) => {
     const creds = decryptStockCredentials(s);
+
+    // Calculate whole-account latest cutoff time (when the last slot expires)
+    const activeSlotsWithOrder = s.profileSlots.filter(
+      (slot) => slot.order && slot.order.status === 'ACTIVE' && slot.order.expiresAt
+    );
+    let accountCutoffTime: string | null = null;
+    if (activeSlotsWithOrder.length > 0) {
+      const timestamps = activeSlotsWithOrder.map((slot) => new Date(slot.order!.expiresAt).getTime());
+      accountCutoffTime = new Date(Math.max(...timestamps)).toISOString();
+    }
+
     return {
       id: s.id,
       productName: s.product.name,
@@ -190,6 +201,11 @@ export async function getAdminStocks() {
       notes: s.notes,
       totalSlots: s.totalSlots,
       status: s.status,
+      registeredAt: s.registeredAt ? s.registeredAt.toISOString() : null,
+      billingDate: s.billingDate ? s.billingDate.toISOString() : null,
+      paymentMethod: s.paymentMethod || null,
+      autoRenew: s.autoRenew,
+      accountCutoffTime,
       createdAt: s.createdAt.toISOString(),
       slots: s.profileSlots.map((slot) => ({
         id: slot.id,
@@ -209,6 +225,10 @@ export async function addStockAccountAction(data: {
   email: string;
   password: string;
   notes?: string;
+  registeredAt?: string | null;
+  billingDate?: string | null;
+  paymentMethod?: string | null;
+  autoRenew?: boolean;
   slots: { slotName: string; slotPin?: string }[];
 }) {
   const admin = await requireAdmin();
@@ -227,6 +247,10 @@ export async function addStockAccountAction(data: {
       notes: data.notes || '',
       totalSlots: data.slots.length,
       status: 'ACTIVE',
+      registeredAt: data.registeredAt ? new Date(data.registeredAt) : null,
+      billingDate: data.billingDate ? new Date(data.billingDate) : null,
+      paymentMethod: data.paymentMethod ? data.paymentMethod.trim() : null,
+      autoRenew: data.autoRenew !== undefined ? data.autoRenew : true,
       profileSlots: {
         create: data.slots.map((s) => ({
           slotName: s.slotName || 'จอ 1',
@@ -241,11 +265,43 @@ export async function addStockAccountAction(data: {
     data: {
       userId: admin.id,
       action: 'STOCK_ADD',
-      details: `แอดมิน ${admin.username} เพิ่มสต็อกบัญชีใหม่สำหรับสินค้ารหัส ${data.productId} จำนวน ${data.slots.length} สิทธิ์`,
+      details: `แอดมิน ${admin.username} เพิ่มสต็อกบัญชีใหม่สำหรับสินค้ารหัส ${data.productId} จำนวน ${data.slots.length} สิทธิ์ (ตัดเงินผ่าน: ${data.paymentMethod || 'ไม่ระบุ'})`,
     },
   });
 
   return { success: true, stockId: stock.id };
+}
+
+export async function updateStockAccountAction(data: {
+  id: string;
+  notes?: string;
+  registeredAt?: string | null;
+  billingDate?: string | null;
+  paymentMethod?: string | null;
+  autoRenew?: boolean;
+}) {
+  const admin = await requireAdmin();
+
+  const updated = await prisma.accountStock.update({
+    where: { id: data.id },
+    data: {
+      notes: data.notes !== undefined ? data.notes : undefined,
+      registeredAt: data.registeredAt ? new Date(data.registeredAt) : data.registeredAt === null ? null : undefined,
+      billingDate: data.billingDate ? new Date(data.billingDate) : data.billingDate === null ? null : undefined,
+      paymentMethod: data.paymentMethod !== undefined ? data.paymentMethod : undefined,
+      autoRenew: data.autoRenew !== undefined ? data.autoRenew : undefined,
+    },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: 'STOCK_UPDATE',
+      details: `แอดมิน ${admin.username} อัปเดตข้อมูลรอบบิลและสต็อก ${data.id}`,
+    },
+  });
+
+  return { success: true, stock: updated };
 }
 
 /**
@@ -336,6 +392,7 @@ export async function saveProductAction(data: {
   usageGuide: string;
   otpEnabled: boolean;
   lineOaUrl?: string;
+  cutoffType?: string;
   isActive: boolean;
 }) {
   const admin = await requireAdmin();
@@ -353,6 +410,7 @@ export async function saveProductAction(data: {
         usageGuide: data.usageGuide,
         otpEnabled: data.otpEnabled,
         lineOaUrl: data.lineOaUrl,
+        cutoffType: data.cutoffType || 'ROUND_UP_HOUR',
         isActive: data.isActive,
       },
     });
@@ -369,6 +427,7 @@ export async function saveProductAction(data: {
         usageGuide: data.usageGuide,
         otpEnabled: data.otpEnabled,
         lineOaUrl: data.lineOaUrl,
+        cutoffType: data.cutoffType || 'ROUND_UP_HOUR',
         isActive: data.isActive,
       },
     });
@@ -534,3 +593,153 @@ export async function getAdminAuditLogs() {
     take: 100,
   });
 }
+
+// 8. Dynamic Store Contacts Management
+export async function getStoreContacts() {
+  return prisma.storeContact.findMany({
+    orderBy: { sortOrder: 'asc' },
+  });
+}
+
+export async function saveStoreContactAction(data: {
+  id?: string;
+  title: string;
+  url: string;
+  handle: string;
+  iconName?: string;
+  sortOrder?: number;
+}) {
+  const admin = await requireAdmin();
+
+  if (data.id) {
+    const updated = await prisma.storeContact.update({
+      where: { id: data.id },
+      data: {
+        title: data.title,
+        url: data.url,
+        handle: data.handle,
+        iconName: data.iconName || 'MessageCircle',
+        sortOrder: data.sortOrder !== undefined ? data.sortOrder : 0,
+      },
+    });
+    return { success: true, contact: updated };
+  } else {
+    const created = await prisma.storeContact.create({
+      data: {
+        title: data.title,
+        url: data.url,
+        handle: data.handle,
+        iconName: data.iconName || 'MessageCircle',
+        sortOrder: data.sortOrder !== undefined ? data.sortOrder : 0,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'STORE_CONTACT_ADD',
+        details: `แอดมิน ${admin.username} เพิ่มช่องทางติดต่อ: ${data.title} (${data.handle})`,
+      },
+    });
+    return { success: true, contact: created };
+  }
+}
+
+export async function deleteStoreContactAction(id: string) {
+  const admin = await requireAdmin();
+  await prisma.storeContact.delete({
+    where: { id },
+  });
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: 'STORE_CONTACT_DELETE',
+      details: `แอดมิน ${admin.username} ลบช่องทางติดต่อรหัส ${id}`,
+    },
+  });
+  return { success: true };
+}
+
+// 9. Bank Accounts Management
+export async function getBankAccounts(onlyActive: boolean = false) {
+  return prisma.bankAccount.findMany({
+    where: onlyActive ? { isActive: true } : undefined,
+    orderBy: { sortOrder: 'asc' },
+  });
+}
+
+export async function saveBankAccountAction(data: {
+  id?: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  promptPayNumber?: string | null;
+  qrCodeUrl?: string | null;
+  isPromptPay?: boolean;
+  isActive?: boolean;
+  sortOrder?: number;
+}) {
+  const admin = await requireAdmin();
+
+  if (data.id) {
+    const updated = await prisma.bankAccount.update({
+      where: { id: data.id },
+      data: {
+        bankName: data.bankName,
+        accountName: data.accountName,
+        accountNumber: data.accountNumber,
+        promptPayNumber: data.promptPayNumber || null,
+        qrCodeUrl: data.qrCodeUrl || null,
+        isPromptPay: data.isPromptPay !== undefined ? data.isPromptPay : false,
+        isActive: data.isActive !== undefined ? data.isActive : true,
+        sortOrder: data.sortOrder !== undefined ? data.sortOrder : 0,
+      },
+    });
+    return { success: true, account: updated };
+  } else {
+    const created = await prisma.bankAccount.create({
+      data: {
+        bankName: data.bankName,
+        accountName: data.accountName,
+        accountNumber: data.accountNumber,
+        promptPayNumber: data.promptPayNumber || null,
+        qrCodeUrl: data.qrCodeUrl || null,
+        isPromptPay: data.isPromptPay !== undefined ? data.isPromptPay : false,
+        isActive: data.isActive !== undefined ? data.isActive : true,
+        sortOrder: data.sortOrder !== undefined ? data.sortOrder : 0,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'BANK_ACCOUNT_ADD',
+        details: `แอดมิน ${admin.username} เพิ่มบัญชีธนาคาร: ${data.bankName} เลขที่ ${data.accountNumber}`,
+      },
+    });
+    return { success: true, account: created };
+  }
+}
+
+export async function deleteBankAccountAction(id: string) {
+  const admin = await requireAdmin();
+  await prisma.bankAccount.delete({
+    where: { id },
+  });
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: 'BANK_ACCOUNT_DELETE',
+      details: `แอดมิน ${admin.username} ลบบัญชีธนาคารรหัส ${id}`,
+    },
+  });
+  return { success: true };
+}
+
+export async function toggleBankAccountAction(id: string, isActive: boolean) {
+  const admin = await requireAdmin();
+  await prisma.bankAccount.update({
+    where: { id },
+    data: { isActive },
+  });
+  return { success: true };
+}
+

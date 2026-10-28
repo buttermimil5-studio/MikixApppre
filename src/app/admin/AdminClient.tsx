@@ -5,11 +5,17 @@ import {
   getAdminDashboardStats,
   adjustUserCreditAction,
   addStockAccountAction,
+  updateStockAccountAction,
   recycleStockAccountAction,
   toggleProductActiveAction,
   saveProductAction,
   updateStoreSettingsAction,
   approveManualTopupAction,
+  saveStoreContactAction,
+  deleteStoreContactAction,
+  saveBankAccountAction,
+  deleteBankAccountAction,
+  toggleBankAccountAction,
 } from '@/lib/actions/adminActions';
 import {
   BarChart3,
@@ -31,6 +37,11 @@ import {
   Check,
   X,
   ShoppingBag,
+  Building,
+  Calendar,
+  Edit3,
+  Trash2,
+  ExternalLink,
 } from 'lucide-react';
 
 interface AdminClientProps {
@@ -43,6 +54,8 @@ interface AdminClientProps {
   initialAuditLogs: any[];
   categories: any[];
   initialOrders?: any[];
+  initialBankAccounts?: any[];
+  initialContacts?: any[];
 }
 
 export function AdminClient({
@@ -55,9 +68,11 @@ export function AdminClient({
   initialAuditLogs,
   categories,
   initialOrders = [],
+  initialBankAccounts = [],
+  initialContacts = [],
 }: AdminClientProps) {
   const [activeTab, setActiveTab] = useState<
-    'DASHBOARD' | 'ORDERS' | 'STOCKS' | 'PRODUCTS' | 'USERS' | 'SLIPS' | 'SETTINGS' | 'LOGS'
+    'DASHBOARD' | 'ORDERS' | 'STOCKS' | 'PRODUCTS' | 'USERS' | 'SLIPS' | 'BANK_ACCOUNTS' | 'SETTINGS' | 'LOGS'
   >('DASHBOARD');
 
   const [stats, setStats] = useState(initialStats);
@@ -68,6 +83,8 @@ export function AdminClient({
   const [topups, setTopups] = useState(initialTopups);
   const [settings, setSettings] = useState(initialSettings);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
+  const [bankAccounts, setBankAccounts] = useState(initialBankAccounts);
+  const [contacts, setContacts] = useState(initialContacts);
 
   // Modals & form states
   const [creditModalUser, setCreditModalUser] = useState<any | null>(null);
@@ -80,13 +97,29 @@ export function AdminClient({
   const [recycleNewPassword, setRecycleNewPassword] = useState<string>('');
   const [recycleLoading, setRecycleLoading] = useState(false);
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const nextMonthStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
   const [newStockModal, setNewStockModal] = useState(false);
   const [newStockProduct, setNewStockProduct] = useState(products[0]?.id || '');
   const [newStockEmail, setNewStockEmail] = useState('');
   const [newStockPassword, setNewStockPassword] = useState('');
   const [newStockNotes, setNewStockNotes] = useState('');
   const [newStockSlotCount, setNewStockSlotCount] = useState<number>(1);
+  const [newStockRegisteredAt, setNewStockRegisteredAt] = useState<string>(todayStr);
+  const [newStockBillingDate, setNewStockBillingDate] = useState<string>(nextMonthStr);
+  const [newStockPaymentMethod, setNewStockPaymentMethod] = useState<string>('TrueMoney Wallet');
+  const [newStockAutoRenew, setNewStockAutoRenew] = useState<boolean>(true);
   const [newStockLoading, setNewStockLoading] = useState(false);
+
+  // Edit stock billing modal
+  const [editBillingStock, setEditBillingStock] = useState<any | null>(null);
+  const [editRegisteredAt, setEditRegisteredAt] = useState('');
+  const [editBillingDate, setEditBillingDate] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('TrueMoney Wallet');
+  const [editAutoRenew, setEditAutoRenew] = useState(true);
+  const [editStockNotes, setEditStockNotes] = useState('');
+  const [editBillingLoading, setEditBillingLoading] = useState(false);
 
   const [editProductModal, setEditProductModal] = useState<any | null>(null);
   const [prodName, setProdName] = useState('');
@@ -98,7 +131,27 @@ export function AdminClient({
   const [prodGuide, setProdGuide] = useState('');
   const [prodOtp, setProdOtp] = useState(false);
   const [prodLineOa, setProdLineOa] = useState('');
+  const [prodCutoffType, setProdCutoffType] = useState<string>('ROUND_UP_HOUR');
   const [prodLoading, setProdLoading] = useState(false);
+
+  // Bank Account Modal
+  const [bankModal, setBankModal] = useState<any | null>(null);
+  const [bankName, setBankName] = useState('ธนาคารกสิกรไทย');
+  const [bankAccountName, setBankAccountName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankPromptPay, setBankPromptPay] = useState('');
+  const [bankQrUrl, setBankQrUrl] = useState('');
+  const [bankIsPromptPay, setBankIsPromptPay] = useState(false);
+  const [bankIsActive, setBankIsActive] = useState(true);
+  const [bankLoading, setBankLoading] = useState(false);
+
+  // Store Contact Modal
+  const [contactModal, setContactModal] = useState<any | null>(null);
+  const [contactTitle, setContactTitle] = useState('LINE Official');
+  const [contactUrl, setContactUrl] = useState('');
+  const [contactHandle, setContactHandle] = useState('');
+  const [contactIcon, setContactIcon] = useState('MessageCircle');
+  const [contactLoading, setContactLoading] = useState(false);
 
   const [settingsForm, setSettingsForm] = useState({
     storeName: settings?.storeName || '',
@@ -132,6 +185,7 @@ export function AdminClient({
     { id: 'PRODUCTS', label: 'สินค้า & หมวดหมู่', icon: Layers },
     { id: 'USERS', label: 'สมาชิก & ปรับเครดิต', icon: Users },
     { id: 'SLIPS', label: 'ตรวจสอบสลิป', icon: CreditCard },
+    { id: 'BANK_ACCOUNTS', label: 'บัญชีธนาคาร', icon: Building },
     { id: 'SETTINGS', label: 'ตั้งค่าร้านค้า', icon: Settings },
     { id: 'LOGS', label: 'ประวัติ Audit Logs', icon: History },
   ];
@@ -194,6 +248,10 @@ export function AdminClient({
       email: newStockEmail,
       password: newStockPassword,
       notes: newStockNotes,
+      registeredAt: newStockRegisteredAt || null,
+      billingDate: newStockBillingDate || null,
+      paymentMethod: newStockPaymentMethod,
+      autoRenew: newStockAutoRenew,
       slots,
     });
     setNewStockLoading(false);
@@ -202,6 +260,42 @@ export function AdminClient({
       window.location.reload();
     } else {
       alert('เพิ่มสต็อกไม่สำเร็จ');
+    }
+  };
+
+  const handleUpdateStockBilling = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editBillingStock) return;
+    setEditBillingLoading(true);
+
+    const res = await updateStockAccountAction({
+      id: editBillingStock.id,
+      notes: editStockNotes,
+      registeredAt: editRegisteredAt || null,
+      billingDate: editBillingDate || null,
+      paymentMethod: editPaymentMethod,
+      autoRenew: editAutoRenew,
+    });
+    setEditBillingLoading(false);
+
+    if (res.success) {
+      setStocks(
+        stocks.map((s) =>
+          s.id === editBillingStock.id
+            ? {
+                ...s,
+                notes: editStockNotes,
+                registeredAt: editRegisteredAt ? new Date(editRegisteredAt).toISOString() : null,
+                billingDate: editBillingDate ? new Date(editBillingDate).toISOString() : null,
+                paymentMethod: editPaymentMethod,
+                autoRenew: editAutoRenew,
+              }
+            : s
+        )
+      );
+      setEditBillingStock(null);
+    } else {
+      alert('อัปเดตข้อมูลรอบบิลไม่สำเร็จ');
     }
   };
 
@@ -225,6 +319,7 @@ export function AdminClient({
       usageGuide: prodGuide,
       otpEnabled: prodOtp,
       lineOaUrl: prodLineOa || undefined,
+      cutoffType: prodCutoffType || 'ROUND_UP_HOUR',
       isActive: editProductModal ? editProductModal.isActive : true,
     });
     setProdLoading(false);
@@ -233,6 +328,80 @@ export function AdminClient({
       window.location.reload();
     } else {
       alert('บันทึกสินค้าไม่สำเร็จ');
+    }
+  };
+
+  const handleSaveBankAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBankLoading(true);
+
+    const res = await saveBankAccountAction({
+      id: bankModal?.isNew ? undefined : bankModal?.id,
+      bankName,
+      accountName: bankAccountName,
+      accountNumber: bankAccountNumber,
+      promptPayNumber: bankPromptPay || null,
+      qrCodeUrl: bankQrUrl || null,
+      isPromptPay: bankIsPromptPay,
+      isActive: bankIsActive,
+    });
+    setBankLoading(false);
+
+    if (res.success && res.account) {
+      if (bankModal?.isNew) {
+        setBankAccounts([...bankAccounts, res.account]);
+      } else {
+        setBankAccounts(bankAccounts.map((b) => (b.id === res.account.id ? res.account : b)));
+      }
+      setBankModal(null);
+    } else {
+      alert('บันทึกบัญชีธนาคารไม่สำเร็จ');
+    }
+  };
+
+  const handleDeleteBankAccount = async (id: string) => {
+    if (!confirm('ต้องการลบบัญชีธนาคารนี้ใช่หรือไม่?')) return;
+    const res = await deleteBankAccountAction(id);
+    if (res.success) {
+      setBankAccounts(bankAccounts.filter((b) => b.id !== id));
+    }
+  };
+
+  const handleToggleBankAccount = async (id: string, current: boolean) => {
+    await toggleBankAccountAction(id, !current);
+    setBankAccounts(bankAccounts.map((b) => (b.id === id ? { ...b, isActive: !current } : b)));
+  };
+
+  const handleSaveStoreContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactLoading(true);
+
+    const res = await saveStoreContactAction({
+      id: contactModal?.isNew ? undefined : contactModal?.id,
+      title: contactTitle,
+      url: contactUrl,
+      handle: contactHandle,
+      iconName: contactIcon,
+    });
+    setContactLoading(false);
+
+    if (res.success && res.contact) {
+      if (contactModal?.isNew) {
+        setContacts([...contacts, res.contact]);
+      } else {
+        setContacts(contacts.map((c) => (c.id === res.contact.id ? res.contact : c)));
+      }
+      setContactModal(null);
+    } else {
+      alert('บันทึกช่องทางติดต่อไม่สำเร็จ');
+    }
+  };
+
+  const handleDeleteStoreContact = async (id: string) => {
+    if (!confirm('ต้องการลบช่องทางติดต่อนี้ใช่หรือไม่?')) return;
+    const res = await deleteStoreContactAction(id);
+    if (res.success) {
+      setContacts(contacts.filter((c) => c.id !== id));
     }
   };
 
@@ -560,6 +729,89 @@ export function AdminClient({
                     </button>
                   </div>
 
+                  {/* App Subscription & Billing Info Bar */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                    {stock.registeredAt && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FFF8F3] text-[#6D4C41] border border-[#FFD9CE]">
+                        <Calendar className="w-3.5 h-3.5 text-[#E5989B]" />
+                        <span>สมัครเมื่อ: {new Date(stock.registeredAt).toLocaleDateString('th-TH')}</span>
+                      </span>
+                    )}
+
+                    {stock.billingDate && (() => {
+                      const bDate = new Date(stock.billingDate);
+                      const isPast = bDate.getTime() < Date.now();
+                      const isSoon = bDate.getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000;
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${
+                            isPast
+                              ? 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3] font-bold'
+                              : isSoon
+                              ? 'bg-[#FEF3C7] text-[#D97706] border-[#FDE68A] font-bold'
+                              : 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]'
+                          }`}
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>
+                            รอบตัดเงินแอพ: {bDate.toLocaleDateString('th-TH')}{' '}
+                            {isPast ? '(ถึงกำหนดแล้ว!)' : isSoon ? '(ใกล้ถึงกำหนด)' : ''}
+                          </span>
+                        </span>
+                      );
+                    })()}
+
+                    {stock.paymentMethod && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FFFDF5] text-[#854D0E] border border-[#FEF08A] font-medium">
+                        <CreditCard className="w-3.5 h-3.5 text-[#CA8A04]" />
+                        <span>
+                          ตัดเงินผ่าน: <strong>{stock.paymentMethod}</strong>
+                        </span>
+                      </span>
+                    )}
+
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                        stock.autoRenew
+                          ? 'bg-[#ECFDF5] text-[#059669]'
+                          : 'bg-[#F3F4F6] text-[#6B7280]'
+                      }`}
+                    >
+                      {stock.autoRenew ? 'ตัดเงินอัตโนมัติ' : 'ไม่ตัดอัตโนมัติ'}
+                    </span>
+
+                    {/* Whole-Account Cutoff Time (When the last screen/slot expires) */}
+                    {stock.accountCutoffTime && (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#FFE8D6] text-[#6D4C41] border border-[#FFCDB2] font-black shadow-xs">
+                        <Clock className="w-3.5 h-3.5 text-[#D84315]" />
+                        <span>
+                          เวลาตัดรอบทั้งบัญชี:{' '}
+                          {new Date(stock.accountCutoffTime).toLocaleTimeString('th-TH', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          น. (เมื่อจอสุดท้ายหมดอายุ)
+                        </span>
+                      </span>
+                    )}
+
+                    {/* Quick edit billing button */}
+                    <button
+                      onClick={() => {
+                        setEditBillingStock(stock);
+                        setEditRegisteredAt(stock.registeredAt ? stock.registeredAt.slice(0, 10) : '');
+                        setEditBillingDate(stock.billingDate ? stock.billingDate.slice(0, 10) : '');
+                        setEditPaymentMethod(stock.paymentMethod || 'TrueMoney Wallet');
+                        setEditAutoRenew(stock.autoRenew !== false);
+                        setEditStockNotes(stock.notes || '');
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#8D6E63] hover:text-[#5D4037] hover:bg-[#FFF8F3] border border-[#E8DCCF] transition-colors ml-auto"
+                    >
+                      <Edit3 className="w-3 h-3 text-[#FFB4A2]" />
+                      <span>แก้ไขรอบบิล/ช่องทางชำระ</span>
+                    </button>
+                  </div>
+
                   {/* Profile Slots List */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1">
                     {stock.slots.map((slot: any) => (
@@ -614,6 +866,7 @@ export function AdminClient({
                 setProdGuide('');
                 setProdOtp(false);
                 setProdLineOa('');
+                setProdCutoffType('ROUND_UP_HOUR');
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
             >
@@ -634,6 +887,11 @@ export function AdminClient({
                     <h3 className="font-extrabold text-sm text-[#5D4037] leading-snug">{p.name}</h3>
                     <p className="text-xs text-[#8D6E63]">{p.category?.name} • {p.durationDays} วัน</p>
                     <p className="text-sm font-black text-[#E5989B] mt-1">{p.price} ฿</p>
+                    <div className="pt-1">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF8F3] text-[#6D4C41] border border-[#FFD9CE]">
+                        ตัดรอบ: {p.cutoffType === 'MIDNIGHT' ? 'เที่ยงคืน (23:59)' : p.cutoffType === 'EXACT_TIME' ? 'เวลาตรง 24 ชม.' : 'ปัดขึ้นชั่วโมง'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -661,6 +919,7 @@ export function AdminClient({
                       setProdGuide(p.usageGuide);
                       setProdOtp(p.otpEnabled);
                       setProdLineOa(p.lineOaUrl || '');
+                      setProdCutoffType(p.cutoffType || 'ROUND_UP_HOUR');
                     }}
                     className="text-xs font-bold text-[#FFB4A2] hover:underline"
                   >
@@ -811,7 +1070,125 @@ export function AdminClient({
         </div>
       )}
 
-      {/* TAB 6: STORE SETTINGS */}
+      {/* TAB 6: BANK ACCOUNTS MANAGEMENT */}
+      {activeTab === 'BANK_ACCOUNTS' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-black text-[#5D4037]">จัดการบัญชีธนาคาร & ช่องทางชำระเงิน</h2>
+              <p className="text-xs text-[#8D6E63]">
+                เพิ่มบัญชีธนาคาร พร้อมเพย์ หรือวอลเล็ทได้ไม่จำกัด เพื่อให้ลูกค้าเลือกโอนเงินในหน้าเติมเครดิต
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setBankModal({ isNew: true });
+                setBankName('ธนาคารกสิกรไทย');
+                setBankAccountName('');
+                setBankAccountNumber('');
+                setBankPromptPay('');
+                setBankQrUrl('');
+                setBankIsPromptPay(false);
+                setBankIsActive(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>เพิ่มบัญชีใหม่</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {bankAccounts.map((b) => (
+              <div
+                key={b.id}
+                className="miki-card p-5 bg-white border border-[#E8DCCF] space-y-4 shadow-xs"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full bg-[#FFF8F3] border border-[#FFD9CE] flex items-center justify-center text-[#E5989B]">
+                      <Building className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm text-[#5D4037]">{b.bankName}</h3>
+                      <p className="text-xs text-[#8D6E63]">{b.accountName}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleToggleBankAccount(b.id, b.isActive)}
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                      b.isActive
+                        ? 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
+                        : 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
+                    }`}
+                  >
+                    {b.isActive ? 'เปิดรับเงิน' : 'ปิดใช้งาน'}
+                  </button>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-[#FDFBF7] border border-[#FFD9CE] space-y-1.5 text-xs font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-[#8D6E63] font-sans">เลขที่บัญชี:</span>
+                    <span className="font-bold text-[#5D4037]">{b.accountNumber}</span>
+                  </div>
+                  {b.promptPayNumber && (
+                    <div className="flex justify-between">
+                      <span className="text-[#8D6E63] font-sans">พร้อมเพย์:</span>
+                      <span className="font-bold text-[#E5989B]">{b.promptPayNumber}</span>
+                    </div>
+                  )}
+                  {b.qrCodeUrl && (
+                    <div className="pt-2 text-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={b.qrCodeUrl}
+                        alt="QR Code"
+                        className="w-24 h-24 mx-auto object-contain rounded-lg border border-[#FFD9CE]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#E8DCCF]">
+                  <button
+                    onClick={() => {
+                      setBankModal(b);
+                      setBankName(b.bankName);
+                      setBankAccountName(b.accountName);
+                      setBankAccountNumber(b.accountNumber);
+                      setBankPromptPay(b.promptPayNumber || '');
+                      setBankQrUrl(b.qrCodeUrl || '');
+                      setBankIsPromptPay(b.isPromptPay || false);
+                      setBankIsActive(b.isActive !== false);
+                    }}
+                    className="p-1.5 rounded-full hover:bg-[#FFF8F3] text-[#8D6E63] hover:text-[#5D4037]"
+                    title="แก้ไขบัญชี"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteBankAccount(b.id)}
+                    className="p-1.5 rounded-full hover:bg-[#FFF1F2] text-[#8D6E63] hover:text-[#E11D48]"
+                    title="ลบบัญชี"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {bankAccounts.length === 0 && (
+              <div className="col-span-full text-center py-12 miki-card bg-white border border-[#E8DCCF] text-[#8D6E63] space-y-2">
+                <Building className="w-8 h-8 mx-auto text-[#FFB4A2]" />
+                <p className="font-bold text-sm">ยังไม่มีบัญชีธนาคารที่เพิ่มเอง</p>
+                <p className="text-xs">กดปุ่ม "เพิ่มบัญชีใหม่" เพื่อใส่บัญชีกสิกร, ไทยพาณิชย์, พร้อมเพย์ หรือวอลเล็ท</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 7: STORE SETTINGS */}
       {activeTab === 'SETTINGS' && (
         <form onSubmit={handleSaveSettings} className="miki-card p-6 bg-white border border-[#E8DCCF] space-y-6">
           <div className="flex items-center justify-between border-b border-[#E8DCCF] pb-3">
@@ -933,38 +1310,86 @@ export function AdminClient({
               />
             </div>
 
-            {/* Contact Channels */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">LINE Official Account หรือ LINE ID</label>
-              <input
-                type="text"
-                value={settingsForm.contactLine}
-                onChange={(e) => setSettingsForm({ ...settingsForm, contactLine: e.target.value })}
-                className="w-full miki-input text-xs"
-                placeholder="@mikistore หรือ ลิงก์ LINE"
-              />
-            </div>
+            {/* Dynamic Contact Channels Management */}
+            <div className="md:col-span-2 pt-4 border-t border-[#E8DCCF] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-extrabold text-sm text-[#5D4037]">ช่องทางการติดต่อร้านค้า (Dynamic Contacts)</h3>
+                  <p className="text-xs text-[#8D6E63]">
+                    เพิ่มช่องทางติดต่อได้ไม่จำกัด (LINE, Facebook, Instagram, TikTok, Discord ฯลฯ) เมื่อลูกค้ากดจะเปิดลิ้งค์ไปหน้านั้นๆ ทันที
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContactModal({ isNew: true });
+                    setContactTitle('LINE Official');
+                    setContactUrl('https://line.me');
+                    setContactHandle('@');
+                    setContactIcon('MessageCircle');
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFEFE8] shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ เพิ่มช่องทางติดต่อ</span>
+                </button>
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">Facebook Page</label>
-              <input
-                type="text"
-                value={settingsForm.contactFacebook}
-                onChange={(e) => setSettingsForm({ ...settingsForm, contactFacebook: e.target.value })}
-                className="w-full miki-input text-xs"
-                placeholder="ชื่อเพจ หรือ ลิงก์ Facebook"
-              />
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {contacts.map((c) => (
+                  <div
+                    key={c.id}
+                    className="p-3.5 rounded-2xl bg-[#FFFDF7] border border-[#FFD9CE] flex items-center justify-between shadow-xs"
+                  >
+                    <div className="space-y-0.5 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 font-extrabold text-xs text-[#5D4037]">
+                        <span>{c.title}</span>
+                      </div>
+                      <p className="text-[11px] text-[#8D6E63] truncate">{c.handle}</p>
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] text-[#E5989B] hover:underline truncate max-w-full"
+                      >
+                        <span className="truncate">{c.url}</span>
+                        <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                      </a>
+                    </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">Instagram</label>
-              <input
-                type="text"
-                value={settingsForm.contactInstagram}
-                onChange={(e) => setSettingsForm({ ...settingsForm, contactInstagram: e.target.value })}
-                className="w-full miki-input text-xs"
-                placeholder="ชื่อไอจี หรือ ลิงก์ Instagram"
-              />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setContactModal(c);
+                          setContactTitle(c.title);
+                          setContactUrl(c.url);
+                          setContactHandle(c.handle);
+                          setContactIcon(c.iconName || 'MessageCircle');
+                        }}
+                        className="p-1 rounded-lg text-[#8D6E63] hover:text-[#5D4037]"
+                        title="แก้ไข"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStoreContact(c.id)}
+                        className="p-1 rounded-lg text-[#8D6E63] hover:text-[#E11D48]"
+                        title="ลบ"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {contacts.length === 0 && (
+                  <div className="col-span-full p-4 rounded-2xl bg-[#FFFDF7] border border-[#E8DCCF] text-center text-xs text-[#8D6E63]">
+                    ยังไม่มีช่องทางติดต่อไดนามิก กดปุ่ม <strong>[+ เพิ่มช่องทางติดต่อ]</strong> ด้านบนเพื่อเพิ่มได้เลย
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Bank Info & Payment */}
@@ -1312,6 +1737,80 @@ export function AdminClient({
                 />
               </div>
 
+              {/* App Subscription & Billing Info Inputs */}
+              <div className="p-3.5 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] space-y-3">
+                <div className="font-bold text-xs text-[#5D4037] flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-[#FFB4A2]" />
+                  <span>ข้อมูลการสมัครและรอบบิลของแอพจริง</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-[#8D6E63]">วันที่เริ่มสมัครแอพ</label>
+                    <input
+                      type="date"
+                      value={newStockRegisteredAt}
+                      onChange={(e) => setNewStockRegisteredAt(e.target.value)}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-[#8D6E63]">วันที่แอพตัดเงินรอบถัดไป</label>
+                    <input
+                      type="date"
+                      value={newStockBillingDate}
+                      onChange={(e) => setNewStockBillingDate(e.target.value)}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-[#8D6E63]">ช่องทางที่แอพตัดเงิน</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={
+                        ['TrueMoney Wallet', 'บัตรเดบิต KBank', 'บัตรเดบิต SCB', 'บัตรเครดิต', 'AIS Billing'].includes(
+                          newStockPaymentMethod
+                        )
+                          ? newStockPaymentMethod
+                          : 'CUSTOM'
+                      }
+                      onChange={(e) => {
+                        if (e.target.value !== 'CUSTOM') setNewStockPaymentMethod(e.target.value);
+                        else setNewStockPaymentMethod('');
+                      }}
+                      className="miki-input text-xs font-bold w-1/2"
+                    >
+                      <option value="TrueMoney Wallet">TrueMoney Wallet</option>
+                      <option value="บัตรเดบิต KBank">บัตรเดบิต KBank</option>
+                      <option value="บัตรเดบิต SCB">บัตรเดบิต SCB</option>
+                      <option value="บัตรเครดิต">บัตรเครดิต</option>
+                      <option value="AIS Billing">AIS Billing</option>
+                      <option value="CUSTOM">อื่น ๆ (พิมพ์เอง)</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={newStockPaymentMethod}
+                      onChange={(e) => setNewStockPaymentMethod(e.target.value)}
+                      placeholder="ระบุช่องทางตัดเงิน..."
+                      className="w-1/2 miki-input text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037] pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newStockAutoRenew}
+                    onChange={(e) => setNewStockAutoRenew(e.target.checked)}
+                    className="rounded text-[#FFB4A2]"
+                  />
+                  <span>แอพนี้เปิดระบบต่ออายุอัตโนมัติ (Auto-Renew)</span>
+                </label>
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
@@ -1423,6 +1922,61 @@ export function AdminClient({
                 />
               </div>
 
+              {/* Cutoff Type Selection */}
+              <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-[#5D4037]">
+                  <Clock className="w-4 h-4 text-[#D84315]" />
+                  <span>รูปแบบการตัดรอบบัญชี (Cutoff Rule)</span>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
+                    <input
+                      type="radio"
+                      name="cutoffType"
+                      value="ROUND_UP_HOUR"
+                      checked={prodCutoffType === 'ROUND_UP_HOUR'}
+                      onChange={(e) => setProdCutoffType(e.target.value)}
+                      className="text-[#E5989B]"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5D4037]">ปัดเศษขึ้นชั่วโมงถัดไป (เช่น 15:23 ปัดเป็น 16:00 น.)</span>
+                      <p className="text-[11px] text-[#8D6E63]">สะดวกต่อการจัดคิวเปลี่ยนรหัสผ่านแอคเคาท์</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
+                    <input
+                      type="radio"
+                      name="cutoffType"
+                      value="MIDNIGHT"
+                      checked={prodCutoffType === 'MIDNIGHT'}
+                      onChange={(e) => setProdCutoffType(e.target.value)}
+                      className="text-[#E5989B]"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5D4037]">ตัดรอบเที่ยงคืน (Midnight Cutoff - 23:59:59 น.)</span>
+                      <p className="text-[11px] text-[#8D6E63]">สำหรับบัญชีเน็ตฟิกหรือแอพที่ตัดตามรอบวันสิ้นสุดเที่ยงคืน</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
+                    <input
+                      type="radio"
+                      name="cutoffType"
+                      value="EXACT_TIME"
+                      checked={prodCutoffType === 'EXACT_TIME'}
+                      onChange={(e) => setProdCutoffType(e.target.value)}
+                      className="text-[#E5989B]"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5D4037]">เวลาตรงเป๊ะ (Exact 24 ชั่วโมงต่อวัน)</span>
+                      <p className="text-[11px] text-[#8D6E63]">นับตามเวลาสั่งซื้อตรงตัว</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               {/* OTP Options */}
               <div className="p-3 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] space-y-2">
                 <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037]">
@@ -1460,6 +2014,302 @@ export function AdminClient({
                 <button
                   type="button"
                   onClick={() => setEditProductModal(null)}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT STOCK BILLING & SUBSCRIPTION */}
+      {editBillingStock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
+            <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#FFB4A2]" />
+              <span>แก้ไขรอบบิลและช่องทางตัดเงิน</span>
+            </h3>
+            <p className="text-xs text-[#8D6E63]">
+              บัญชี: <span className="font-bold text-[#5D4037]">{editBillingStock.email}</span> ({editBillingStock.productName})
+            </p>
+
+            <form onSubmit={handleUpdateStockBilling} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-[#8D6E63]">วันที่เริ่มสมัครแอพ</label>
+                  <input
+                    type="date"
+                    value={editRegisteredAt}
+                    onChange={(e) => setEditRegisteredAt(e.target.value)}
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-[#8D6E63]">วันที่แอพตัดเงินรอบถัดไป</label>
+                  <input
+                    type="date"
+                    value={editBillingDate}
+                    onChange={(e) => setEditBillingDate(e.target.value)}
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#8D6E63]">ช่องทางที่แอพตัดเงิน</label>
+                <div className="flex gap-2">
+                  <select
+                    value={
+                      ['TrueMoney Wallet', 'บัตรเดบิต KBank', 'บัตรเดบิต SCB', 'บัตรเครดิต', 'AIS Billing'].includes(
+                        editPaymentMethod
+                      )
+                        ? editPaymentMethod
+                        : 'CUSTOM'
+                    }
+                    onChange={(e) => {
+                      if (e.target.value !== 'CUSTOM') setEditPaymentMethod(e.target.value);
+                      else setEditPaymentMethod('');
+                    }}
+                    className="miki-input text-xs font-bold w-1/2"
+                  >
+                    <option value="TrueMoney Wallet">TrueMoney Wallet</option>
+                    <option value="บัตรเดบิต KBank">บัตรเดบิต KBank</option>
+                    <option value="บัตรเดบิต SCB">บัตรเดบิต SCB</option>
+                    <option value="บัตรเครดิต">บัตรเครดิต</option>
+                    <option value="AIS Billing">AIS Billing</option>
+                    <option value="CUSTOM">อื่น ๆ (พิมพ์เอง)</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={editPaymentMethod}
+                    onChange={(e) => setEditPaymentMethod(e.target.value)}
+                    placeholder="ระบุช่องทางตัดเงิน..."
+                    className="w-1/2 miki-input text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">หมายเหตุ</label>
+                <input
+                  type="text"
+                  value={editStockNotes}
+                  onChange={(e) => setEditStockNotes(e.target.value)}
+                  className="w-full miki-input text-xs"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037] pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editAutoRenew}
+                  onChange={(e) => setEditAutoRenew(e.target.checked)}
+                  className="rounded text-[#FFB4A2]"
+                />
+                <span>ต่ออายุอัตโนมัติ (Auto-Renew)</span>
+              </label>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={editBillingLoading}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
+                >
+                  {editBillingLoading ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditBillingStock(null)}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD / EDIT BANK ACCOUNT */}
+      {bankModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
+            <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+              <Building className="w-5 h-5 text-[#FFB4A2]" />
+              <span>{bankModal.isNew ? 'เพิ่มบัญชีธนาคารใหม่' : `แก้ไขบัญชี: ${bankModal.bankName}`}</span>
+            </h3>
+
+            <form onSubmit={handleSaveBankAccount} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ชื่อธนาคาร / ช่องทาง *</label>
+                <input
+                  type="text"
+                  required
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  placeholder="เช่น ธนาคารกสิกรไทย, ธนาคารไทยพาณิชย์, พร้อมเพย์, TrueMoney Wallet"
+                  className="w-full miki-input text-xs font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ชื่อบัญชี *</label>
+                <input
+                  type="text"
+                  required
+                  value={bankAccountName}
+                  onChange={(e) => setBankAccountName(e.target.value)}
+                  placeholder="เช่น มิคิ สโตร์"
+                  className="w-full miki-input text-xs font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">เลขที่บัญชี *</label>
+                <input
+                  type="text"
+                  required
+                  value={bankAccountNumber}
+                  onChange={(e) => setBankAccountNumber(e.target.value)}
+                  placeholder="เช่น 123-4-56789-0"
+                  className="w-full miki-input text-xs font-mono font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">เบอร์พร้อมเพย์ / วอลเล็ท (สแกนจ่ายได้จริง)</label>
+                <input
+                  type="text"
+                  value={bankPromptPay}
+                  onChange={(e) => setBankPromptPay(e.target.value)}
+                  placeholder="เช่น 0899999999 หรือ เลขบัตรประชาชน"
+                  className="w-full miki-input text-xs font-mono font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ลิงก์รูปภาพ QR Code (ถ้ามี)</label>
+                <input
+                  type="url"
+                  value={bankQrUrl}
+                  onChange={(e) => setBankQrUrl(e.target.value)}
+                  placeholder="https://... (URL รูปภาพ QR บัญชีธนาคาร)"
+                  className="w-full miki-input text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <label className="flex items-center gap-2 font-bold text-[#5D4037] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bankIsActive}
+                    onChange={(e) => setBankIsActive(e.target.checked)}
+                    className="rounded text-[#FFB4A2]"
+                  />
+                  <span>เปิดใช้งานให้ลูกค้าเห็นในหน้าเติมเงิน</span>
+                </label>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={bankLoading}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
+                >
+                  {bankLoading ? 'กำลังบันทึก...' : 'บันทึกบัญชี'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBankModal(null)}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD / EDIT STORE CONTACT */}
+      {contactModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
+            <h3 className="font-extrabold text-base text-[#5D4037]">
+              {contactModal.isNew ? 'เพิ่มช่องทางติดต่อใหม่' : `แก้ไข: ${contactModal.title}`}
+            </h3>
+
+            <form onSubmit={handleSaveStoreContact} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ชื่อช่องทาง *</label>
+                <input
+                  type="text"
+                  required
+                  value={contactTitle}
+                  onChange={(e) => setContactTitle(e.target.value)}
+                  placeholder="เช่น LINE Official, Facebook, Instagram, TikTok, Discord"
+                  className="w-full miki-input text-xs font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ลิงก์ปลายทาง (URL) *</label>
+                <input
+                  type="url"
+                  required
+                  value={contactUrl}
+                  onChange={(e) => setContactUrl(e.target.value)}
+                  placeholder="เช่น https://line.me/R/ti/p/@miki หรือ https://facebook.com/..."
+                  className="w-full miki-input text-xs"
+                />
+                <p className="text-[10px] text-[#8D6E63]">เมื่อลูกค้าคลิกจะเปิดไปยังหน้านี้ในแท็บใหม่</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ข้อความแสดง (Handle / ID) *</label>
+                <input
+                  type="text"
+                  required
+                  value={contactHandle}
+                  onChange={(e) => setContactHandle(e.target.value)}
+                  placeholder="เช่น @mikistore หรือ miki.bakery"
+                  className="w-full miki-input text-xs font-bold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#5D4037]">ไอคอน</label>
+                <select
+                  value={contactIcon}
+                  onChange={(e) => setContactIcon(e.target.value)}
+                  className="w-full miki-input text-xs font-bold"
+                >
+                  <option value="MessageCircle">LINE / แชท (MessageCircle)</option>
+                  <option value="Facebook">Facebook</option>
+                  <option value="Instagram">Instagram</option>
+                  <option value="Music2">TikTok</option>
+                  <option value="Send">Telegram / ข้อความ</option>
+                  <option value="Phone">เบอร์โทรศัพท์</option>
+                  <option value="Mail">อีเมล</option>
+                  <option value="Globe">เว็บไซต์ (Globe)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={contactLoading}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
+                >
+                  {contactLoading ? 'กำลังบันทึก...' : 'บันทึกช่องทางติดต่อ'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContactModal(null)}
                   className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
                 >
                   ยกเลิก

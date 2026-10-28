@@ -25,6 +25,8 @@ export interface PurchaseResult {
   remainingBalance?: number;
 }
 
+import { calculateSlotExpiry } from '@/lib/cutoff';
+
 /**
  * Atomic purchase transaction engine
  * 1. Checks store status & user credit balance
@@ -133,9 +135,9 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
         });
       }
 
-      // Calculate exact expiration
+      // Calculate expiration using cutoff rule
       const purchasedAt = new Date();
-      const expiresAt = new Date(purchasedAt.getTime() + product.durationDays * 24 * 60 * 60 * 1000);
+      const expiresAt = calculateSlotExpiry(purchasedAt, product.durationDays, product.cutoffType || 'ROUND_UP_HOUR');
 
       // Generate human-friendly unique order number: ORD-YYYYMMDD-XXXX
       const datePart = purchasedAt.toISOString().slice(0, 10).replace(/-/g, '');

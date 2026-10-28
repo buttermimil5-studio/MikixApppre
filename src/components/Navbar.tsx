@@ -14,8 +14,11 @@ import {
   LogIn,
   Sparkles,
   User as UserIcon,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { ShokupanIcon } from './BakeryLineIcons';
+import { toggleSound, isSoundEnabled } from '@/lib/soundEffects';
 
 interface NavbarProps {
   initialUser: any;
@@ -24,12 +27,19 @@ interface NavbarProps {
 
 export function Navbar({ initialUser, storeSetting }: NavbarProps) {
   const [user, setUser] = useState(initialUser);
+  const [soundOn, setSoundOn] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     setUser(initialUser);
+    setSoundOn(isSoundEnabled());
   }, [initialUser]);
+
+  const handleSoundToggle = () => {
+    const next = toggleSound();
+    setSoundOn(next);
+  };
 
   const handleLogout = async () => {
     await logoutAction();
@@ -136,6 +146,20 @@ export function Navbar({ initialUser, storeSetting }: NavbarProps) {
                   </Link>
                 </div>
               )}
+
+              {/* Sound Toggle Button */}
+              <button
+                onClick={handleSoundToggle}
+                className="p-1.5 sm:p-2 rounded-full text-[#8D6E63] hover:text-[#5D4037] hover:bg-[#FFF0EB] border border-[#E8DCCF]/60 transition-colors flex-shrink-0"
+                title={soundOn ? 'ปิดเสียงกดปุ่ม' : 'เปิดเสียงกดปุ่ม (ปุ๋มปุ๋ม)'}
+                aria-label="สลับเสียงกดปุ่ม"
+              >
+                {soundOn ? (
+                  <Volume2 className="w-4 h-4 text-[#D97706]" />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-[#BCAAA4]" />
+                )}
+              </button>
             </div>
           </div>
         </div>

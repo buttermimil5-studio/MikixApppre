@@ -29,6 +29,11 @@ export default async function HomePage() {
     orderBy: { sortOrder: 'asc' },
   });
 
+  // Fetch dynamic store contacts
+  const contacts = await prisma.storeContact.findMany({
+    orderBy: { sortOrder: 'asc' },
+  });
+
   // Fetch active products with available slots count
   const rawProducts = await prisma.product.findMany({
     where: { isActive: true },
@@ -75,7 +80,7 @@ export default async function HomePage() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {/* Store Cover, Logo, Announcements & Status */}
-        <StoreHero storeSetting={storeSetting} />
+        <StoreHero storeSetting={storeSetting} contacts={contacts} />
 
         {/* Product Catalog & Categories */}
         <ProductCatalog

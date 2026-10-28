@@ -48,6 +48,7 @@ model Product {
   usageGuide   String
   otpEnabled   Boolean        @default(false)
   lineOaUrl    String?
+  cutoffType   String         @default("ROUND_UP_HOUR") // ROUND_UP_HOUR, MIDNIGHT, EXACT_TIME
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
@@ -69,6 +70,10 @@ model AccountStock {
   notes             String?
   totalSlots        Int                  @default(1)
   status            String               @default("ACTIVE") // ACTIVE, FULL, SERVICING
+  registeredAt      DateTime?            // วันที่สมัครใช้งานแอพ
+  billingDate       DateTime?            // วันที่แอพตัดรอบบิล / วันหมดอายุของแอพจริง
+  paymentMethod     String?              // เช่น TrueMoney Wallet, บัตรเดบิต KBank, AIS Billing
+  autoRenew         Boolean              @default(true)
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -155,3 +160,28 @@ model AuditLog {
   ipAddress String?
   createdAt DateTime @default(now())
 }
+
+model StoreContact {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  handle    String
+  iconName  String   @default("MessageCircle")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model BankAccount {
+  id               String   @id @default(cuid())
+  bankName         String
+  accountName      String
+  accountNumber    String
+  promptPayNumber  String?
+  qrCodeUrl        String?
+  isPromptPay      Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+

@@ -16,6 +16,11 @@ export default async function TopupPage() {
     where: { id: 'default' },
   });
 
+  const bankAccounts = await prisma.bankAccount.findMany({
+    where: { isActive: true },
+    orderBy: { sortOrder: 'asc' },
+  });
+
   const recentTopups = await prisma.topupTransaction.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
@@ -30,6 +35,7 @@ export default async function TopupPage() {
         <TopupClient
           user={user}
           storeSetting={storeSetting}
+          bankAccounts={bankAccounts}
           recentTopups={recentTopups}
         />
       </main>
