@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   ShoppingBag,
+  Monitor,
 } from 'lucide-react';
 
 interface OrdersClientProps {
@@ -36,13 +37,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
 
   const handleCopyCustomerCard = (order: any) => {
     const text = [
-      `[ ข้อมูลบัญชีแอปพรีเมียม - ${order.productName} ]`,
+      `[ ข้อมูลเข้าใช้งานแอปพรีเมียม - ${order.productName} ]`,
       order.orderNumber ? `เลขออเดอร์: ${order.orderNumber}` : '',
       `อีเมล: ${order.email}`,
       `รหัสผ่าน: ${order.password}`,
-      `จอ/โปรไฟล์: ${order.slotName}`,
-      order.slotPin ? `PIN: ${order.slotPin}` : '',
-      order.expiresAt ? `หมดอายุ: ${new Date(order.expiresAt).toLocaleDateString('th-TH')}` : '',
+      `จอ / โปรไฟล์ที่ได้รับ: ${order.slotName}`,
+      order.slotPin ? `รหัส PIN ประจำจอ: ${order.slotPin}` : 'รหัส PIN: ไม่ต้องใช้ PIN (เข้าใช้งานได้ทันที)',
+      order.expiresAt ? `วันหมดอายุ: ${new Date(order.expiresAt).toLocaleString('th-TH')}` : '',
       '',
       `[ กฎและข้อกำหนดการใช้งาน ]`,
       order.rules || 'ไม่มีกฎเพิ่มเติม',
@@ -198,15 +199,83 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 </div>
 
                 {/* Account Credentials Box */}
-                <div className="p-4 rounded-2xl bg-[#FDFBF7] border border-[#FFD9CE] space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
-                    <span className="flex items-center gap-1.5">
-                      <Key className="w-4 h-4 text-[#FFB4A2]" />
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#FFFDF8] border border-[#FFD9CE] space-y-3.5 shadow-xs">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5D4037] border-b border-[#F5EBE1] pb-2">
+                    <span className="flex items-center gap-1.5 font-extrabold">
+                      <Key className="w-4 h-4 text-[#E5989B]" />
                       ข้อมูลบัญชีที่ได้รับ
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-white border border-[#FFD9CE] text-[11px] text-[#E5989B]">
-                      โปรไฟล์: <span className="font-bold">{order.slotName}</span>
+                    <span className="text-[11px] font-bold text-[#2E7D32] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full border border-[#C8E6C9]">
+                      พร้อมใช้งาน
                     </span>
+                  </div>
+
+                  {/* Highlighted Screen & PIN Box */}
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#FFF5F2] to-[#FFF9F5] border border-[#FFD9CE] space-y-2.5">
+                    {/* Screen Name */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#E5989B] shadow-2xs">
+                          <Monitor className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#8D6E63] font-bold block">จอ / โปรไฟล์ที่ได้รับ:</span>
+                          <span className="text-sm font-extrabold text-[#5D4037]">{order.slotName}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(order.slotName, `${order.id}-slot`)}
+                        className="px-2.5 py-1 rounded-xl bg-white border border-[#FFD9CE] text-[11px] font-bold text-[#E5989B] hover:bg-[#FFF0EB] flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                        title="คัดลอกชื่อจอ"
+                      >
+                        {copiedId === `${order.id}-slot` ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                        <span>{copiedId === `${order.id}-slot` ? 'คัดลอกแล้ว' : 'คัดลอกชื่อจอ'}</span>
+                      </button>
+                    </div>
+
+                    {/* PIN Display */}
+                    <div className="flex items-center justify-between pt-2 border-t border-[#FFD9CE]/60">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#D97706] shadow-2xs">
+                          <Key className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#8D6E63] font-bold block">รหัส PIN หน้าจอ:</span>
+                          {order.slotPin ? (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-sm font-mono font-black text-[#B45309] bg-[#FEF3C7] px-2 py-0.5 rounded-md border border-[#FDE68A] tracking-wider">
+                                {order.slotPin}
+                              </span>
+                              <span className="text-[10px] text-[#B45309] font-medium">(PIN เข้าโปรไฟล์)</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-bold text-[#059669]">
+                              ไม่ต้องใช้ PIN (กดเข้าโปรไฟล์ได้ทันที)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {order.slotPin && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(order.slotPin, `${order.id}-pin`)}
+                          className="px-2.5 py-1 rounded-xl bg-white border border-[#FFD9CE] text-[11px] font-bold text-[#B45309] hover:bg-[#FEF3C7] flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                          title="คัดลอก PIN"
+                        >
+                          {copiedId === `${order.id}-pin` ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                          <span>{copiedId === `${order.id}-pin` ? 'คัดลอกแล้ว' : 'คัดลอก PIN'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -256,17 +325,6 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       </div>
                     </div>
                   </div>
-
-                  {/* PIN if exists */}
-                  {order.slotPin && (
-                    <div className="flex items-center gap-2 pt-1 text-xs">
-                      <UserCheck className="w-3.5 h-3.5 text-[#FFB4A2]" />
-                      <span className="text-[#8D6E63] font-medium">รหัส PIN หน้าจอ:</span>
-                      <span className="font-mono font-bold text-[#5D4037] px-2 py-0.5 bg-white rounded-md border border-[#FFD9CE]">
-                        {order.slotPin}
-                      </span>
-                    </div>
-                  )}
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-[#FFD9CE]/60">
                     <div className="text-[11px] text-[#8D6E63]">

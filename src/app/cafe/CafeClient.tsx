@@ -541,8 +541,8 @@ export function CafeClient() {
 
       {/* 8. iOS Bottom Sheet / Order Modal */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#4E342E]/40 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#FFD9CE] shadow-[0_16px_40px_rgba(141,110,99,0.25)] overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#4E342E]/40 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#FFD9CE] shadow-[0_16px_40px_rgba(141,110,99,0.25)] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between">
               <div className="flex items-center gap-2">

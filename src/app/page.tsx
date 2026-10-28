@@ -41,9 +41,16 @@ const getCachedStoreData = unstable_cache(
               id: true,
               profileSlots: {
                 where: { status: 'AVAILABLE' },
-                select: { id: true },
+                select: { id: true, productId: true },
               },
             },
+          },
+          assignedSlots: {
+            where: {
+              status: 'AVAILABLE',
+              accountStock: { status: { in: ['ACTIVE', 'FULL'] } },
+            },
+            select: { id: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -64,12 +71,15 @@ export default async function HomePage() {
 
   const { storeSetting, categories, contacts, rawProducts } = storeData;
 
-  const products = rawProducts.map((p) => {
-    // Count available slots across all active account stocks for this product
-    const availableSlotsCount = p.accountStocks.reduce(
-      (sum, stock) => sum + stock.profileSlots.length,
+  const products = rawProducts.map((p: any) => {
+    // Count available slots across account stocks and directly assigned slots
+    const stockSlotsCount = p.accountStocks.reduce(
+      (sum: number, stock: any) =>
+        sum + stock.profileSlots.filter((s: any) => !s.productId || s.productId === p.id).length,
       0
     );
+    const directAssignedSlotsCount = p.assignedSlots?.length || 0;
+    const availableSlotsCount = stockSlotsCount + directAssignedSlotsCount;
 
     return {
       id: p.id,
@@ -81,6 +91,8 @@ export default async function HomePage() {
       usageGuide: p.usageGuide,
       otpEnabled: p.otpEnabled,
       lineOaUrl: p.lineOaUrl,
+      hasProfilePin: p.hasProfilePin,
+      defaultSlotCount: p.defaultSlotCount,
       categoryId: p.categoryId,
       category: p.category,
       availableSlotsCount,

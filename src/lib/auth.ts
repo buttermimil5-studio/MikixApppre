@@ -73,6 +73,9 @@ export const getCurrentUser = cache(async () => {
 
     return user;
   } catch (error) {
+    if ((error as any)?.digest === 'DYNAMIC_SERVER_USAGE') {
+      throw error;
+    }
     console.error('Error getting current user:', error);
     return null;
   }

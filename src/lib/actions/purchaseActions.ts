@@ -15,6 +15,7 @@ export interface PurchaseResult {
     password: string;
     slotName: string;
     slotPin?: string | null;
+    deviceType?: string | null;
     purchasedAt: string;
     expiresAt: string;
     otpEnabled: boolean;
@@ -84,11 +85,20 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
 
       // Find an available slot for this product
       // We look for slots that are AVAILABLE within ACTIVE stocks
+      // Supports both direct productId link on slot and fallback to accountStock.productId
       const availableSlot = await tx.accountProfileSlot.findFirst({
         where: {
           status: 'AVAILABLE',
+          OR: [
+            { productId: product.id },
+            {
+              productId: null,
+              accountStock: {
+                productId: product.id,
+              },
+            },
+          ],
           accountStock: {
-            productId: product.id,
             status: { in: ['ACTIVE', 'FULL'] },
           },
         },
@@ -96,7 +106,7 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
           accountStock: true,
         },
         orderBy: {
-          createdAt: 'asc', // FIFO stock allocation
+          createdAt: 'asc', // FIFO stock allocation (ส่งมอบจอตามลำดับคิว 1 -> 2 -> 3 ...)
         },
       });
 
@@ -165,6 +175,7 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
         order: newOrder,
         slotName: availableSlot.slotName,
         slotPin: availableSlot.slotPin,
+        deviceType: availableSlot.deviceType || 'MOBILE',
         email,
         password,
         remainingBalance: updatedUser.creditBalance,
@@ -182,6 +193,7 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
         password: transactionResult.password,
         slotName: transactionResult.slotName,
         slotPin: transactionResult.slotPin,
+        deviceType: transactionResult.deviceType,
         purchasedAt: transactionResult.order.purchasedAt.toISOString(),
         expiresAt: transactionResult.order.expiresAt.toISOString(),
         otpEnabled: product.otpEnabled,
@@ -316,6 +328,7 @@ export async function getUserOrdersAction() {
         amountPaid: o.amountPaid,
         slotName: o.profileSlot.slotName,
         slotPin: o.profileSlot.slotPin,
+        deviceType: o.profileSlot.deviceType || 'MOBILE',
         email,
         password,
         purchasedAt: o.purchasedAt.toISOString(),

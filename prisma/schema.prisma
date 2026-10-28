@@ -49,12 +49,15 @@ model Product {
   otpEnabled   Boolean        @default(false)
   lineOaUrl    String?
   cutoffType   String         @default("ROUND_UP_HOUR") // ROUND_UP_HOUR, MIDNIGHT, EXACT_TIME
+  hasProfilePin Boolean       @default(false)
+  defaultSlotCount Int        @default(1)
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
   accountStocks AccountStock[]
   orders        Order[]
+  assignedSlots AccountProfileSlot[] @relation("SlotTargetProduct")
 }
 
 model AccountStock {
@@ -86,6 +89,9 @@ model AccountProfileSlot {
   accountStock   AccountStock @relation(fields: [accountStockId], references: [id], onDelete: Cascade)
   slotName       String       @default("จอ 1")
   slotPin        String?
+  deviceType     String?      @default("MOBILE") // MOBILE, TV, ALL
+  productId      String?
+  targetProduct  Product?     @relation("SlotTargetProduct", fields: [productId], references: [id], onDelete: SetNull)
   status         String       @default("AVAILABLE") // AVAILABLE, ASSIGNED, EXPIRED, LOCKED
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

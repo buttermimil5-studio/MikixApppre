@@ -218,6 +218,8 @@ export async function getAdminStocks() {
         id: slot.id,
         slotName: slot.slotName,
         slotPin: slot.slotPin,
+        deviceType: slot.deviceType || 'MOBILE',
+        productId: slot.productId || null,
         status: slot.status,
         assignedUser: slot.order?.user?.username || null,
         orderNumber: slot.order?.orderNumber || null,
@@ -236,7 +238,7 @@ export async function addStockAccountAction(data: {
   billingDate?: string | null;
   paymentMethod?: string | null;
   autoRenew?: boolean;
-  slots: { slotName: string; slotPin?: string }[];
+  slots: { slotName: string; slotPin?: string; deviceType?: string; productId?: string | null; status?: string }[];
 }) {
   const admin = await requireAdmin();
 
@@ -261,8 +263,10 @@ export async function addStockAccountAction(data: {
       profileSlots: {
         create: data.slots.map((s) => ({
           slotName: s.slotName || 'จอ 1',
-          slotPin: s.slotPin || null,
-          status: 'AVAILABLE',
+          slotPin: s.slotPin && s.slotPin.trim().length > 0 ? s.slotPin.trim() : null,
+          deviceType: s.deviceType || 'MOBILE',
+          productId: s.productId || null,
+          status: s.status || 'AVAILABLE',
         })),
       },
     },
@@ -309,6 +313,38 @@ export async function updateStockAccountAction(data: {
   });
 
   return { success: true, stock: updated };
+}
+
+export async function updateStockSlotsAction(
+  stockId: string,
+  slots: { id: string; slotName: string; slotPin?: string | null; deviceType?: string; productId?: string | null; status?: string }[]
+) {
+  const admin = await requireAdmin();
+
+  await prisma.$transaction(
+    slots.map((s) =>
+      prisma.accountProfileSlot.update({
+        where: { id: s.id },
+        data: {
+          slotName: s.slotName.trim(),
+          slotPin: s.slotPin && s.slotPin.trim().length > 0 ? s.slotPin.trim() : null,
+          deviceType: s.deviceType || 'MOBILE',
+          productId: s.productId || null,
+          status: s.status || undefined,
+        },
+      })
+    )
+  );
+
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: 'STOCK_SLOTS_UPDATE',
+      details: `แอดมิน ${admin.username} อัปเดตชื่อจอ, PIN, และประเภทอุปกรณ์ของสต็อก ${stockId}`,
+    },
+  });
+
+  return { success: true };
 }
 
 /**
@@ -400,43 +436,37 @@ export async function saveProductAction(data: {
   otpEnabled: boolean;
   lineOaUrl?: string;
   cutoffType?: string;
+  hasProfilePin?: boolean;
+  defaultSlotCount?: number;
   isActive: boolean;
 }) {
   const admin = await requireAdmin();
 
+  const productData = {
+    categoryId: data.categoryId,
+    name: data.name,
+    imageUrl: data.imageUrl,
+    price: data.price,
+    durationDays: data.durationDays,
+    rules: data.rules,
+    usageGuide: data.usageGuide,
+    otpEnabled: data.otpEnabled,
+    lineOaUrl: data.lineOaUrl,
+    cutoffType: data.cutoffType || 'ROUND_UP_HOUR',
+    hasProfilePin: data.hasProfilePin ?? false,
+    defaultSlotCount: data.defaultSlotCount ?? 1,
+    isActive: data.isActive,
+  };
+
   if (data.id) {
     const updated = await prisma.product.update({
       where: { id: data.id },
-      data: {
-        categoryId: data.categoryId,
-        name: data.name,
-        imageUrl: data.imageUrl,
-        price: data.price,
-        durationDays: data.durationDays,
-        rules: data.rules,
-        usageGuide: data.usageGuide,
-        otpEnabled: data.otpEnabled,
-        lineOaUrl: data.lineOaUrl,
-        cutoffType: data.cutoffType || 'ROUND_UP_HOUR',
-        isActive: data.isActive,
-      },
+      data: productData,
     });
     return { success: true, product: updated };
   } else {
     const created = await prisma.product.create({
-      data: {
-        categoryId: data.categoryId,
-        name: data.name,
-        imageUrl: data.imageUrl,
-        price: data.price,
-        durationDays: data.durationDays,
-        rules: data.rules,
-        usageGuide: data.usageGuide,
-        otpEnabled: data.otpEnabled,
-        lineOaUrl: data.lineOaUrl,
-        cutoffType: data.cutoffType || 'ROUND_UP_HOUR',
-        isActive: data.isActive,
-      },
+      data: productData,
     });
     return { success: true, product: created };
   }

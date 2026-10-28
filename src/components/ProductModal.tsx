@@ -16,6 +16,9 @@ import {
   UserCheck,
   Wallet,
   AlertCircle,
+  Monitor,
+  ShieldCheck,
+  Tv,
 } from 'lucide-react';
 
 interface ProductModalProps {
@@ -60,13 +63,13 @@ export function ProductModal({
     usageGuide?: string;
   }) => {
     const text = [
-      `[ ข้อมูลบัญชีแอปพรีเมียม - ${data.productName} ]`,
+      `[ ข้อมูลเข้าใช้งานแอปพรีเมียม - ${data.productName} ]`,
       data.orderNumber ? `เลขออเดอร์: ${data.orderNumber}` : '',
       `อีเมล: ${data.email}`,
       `รหัสผ่าน: ${data.password}`,
-      `จอ/โปรไฟล์: ${data.slotName}`,
-      data.slotPin ? `PIN: ${data.slotPin}` : '',
-      data.expiresAt ? `หมดอายุ: ${new Date(data.expiresAt).toLocaleDateString('th-TH')}` : '',
+      `จอ / โปรไฟล์ที่ได้รับ: ${data.slotName}`,
+      data.slotPin ? `รหัส PIN ประจำจอ: ${data.slotPin}` : 'รหัส PIN: ไม่ต้องใช้ PIN (เข้าใช้งานได้ทันที)',
+      data.expiresAt ? `วันหมดอายุ: ${new Date(data.expiresAt).toLocaleString('th-TH')}` : '',
       '',
       `[ กฎและข้อกำหนดการใช้งาน ]`,
       data.rules || 'ไม่มีกฎเพิ่มเติม',
@@ -119,10 +122,10 @@ export function ProductModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/40 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/40 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+      <div className="relative w-full max-w-lg bg-white rounded-[2rem] border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] flex flex-col max-h-[90vh] my-auto overflow-hidden">
         {/* Modal Header */}
-        <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between">
+        <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#FFE8D6] text-[#6D4C41] border border-[#FFCDB2]">
               {product.category?.name || 'แอปพรีเมียม'}
@@ -141,7 +144,7 @@ export function ProductModal({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* If Purchase Succeeded: Instant Credentials Reveal */}
           {orderResult ? (
             <div className="space-y-4">
@@ -153,15 +156,89 @@ export function ProductModal({
               </div>
 
               {/* Account Credentials Vault Card (Styled like a warm bakery slip) */}
-              <div className="p-4 rounded-2xl bg-[#FFFDF5] border border-dashed border-[#FFD9CE] space-y-3">
-                <div className="flex items-center justify-between border-b border-[#F5EBE1] pb-2">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#FFFDF5] border border-dashed border-[#FFD9CE] space-y-3.5 shadow-xs">
+                <div className="flex items-center justify-between border-b border-[#F5EBE1] pb-2.5">
                   <span className="text-xs font-extrabold text-[#5D4037] flex items-center gap-1.5">
                     <Key className="w-4 h-4 text-[#E5989B]" />
                     ข้อมูลเข้าใช้งานของคุณ (森のチケット)
                   </span>
-                  <span className="text-[11px] font-bold text-[#E5989B]">
-                    {orderResult.slotName}
+                  <span className="text-[11px] font-bold text-[#2E7D32] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full border border-[#C8E6C9]">
+                    พร้อมใช้งาน
                   </span>
+                </div>
+
+                {/* Highlighted Screen & PIN Box */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#FFF5F2] to-[#FFF9F5] border border-[#FFD9CE] space-y-2.5">
+                  {/* Screen Name */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#E5989B] shadow-2xs">
+                        <Monitor className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-[#8D6E63] font-bold block">
+                          จอ / โปรไฟล์ที่คุณได้รับ:
+                        </span>
+                        <span className="text-sm sm:text-base font-black text-[#5D4037]">
+                          {orderResult.slotName}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(orderResult.slotName, 'slotName')}
+                      className="px-2.5 py-1.5 rounded-xl bg-white border border-[#FFD9CE] text-[11px] font-bold text-[#E5989B] hover:bg-[#FFF0EB] flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                      title="คัดลอกชื่อจอ"
+                    >
+                      {copiedField === 'slotName' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedField === 'slotName' ? 'คัดลอกแล้ว' : 'คัดลอกชื่อจอ'}</span>
+                    </button>
+                  </div>
+
+                  {/* PIN Display */}
+                  <div className="flex items-center justify-between pt-2 border-t border-[#FFD9CE]/60">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#D97706] shadow-2xs">
+                        <Key className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-[#8D6E63] font-bold block">
+                          รหัส PIN หน้าจอ:
+                        </span>
+                        {orderResult.slotPin ? (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-base font-mono font-black text-[#B45309] bg-[#FEF3C7] px-2.5 py-0.5 rounded-lg border border-[#FDE68A] tracking-wider">
+                              {orderResult.slotPin}
+                            </span>
+                            <span className="text-[10px] text-[#B45309] font-medium">(PIN เข้าโปรไฟล์)</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-bold text-[#059669]">
+                            ไม่ต้องใช้ PIN (กดเข้าโปรไฟล์ได้ทันที)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {orderResult.slotPin && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(orderResult.slotPin!, 'pin')}
+                        className="px-2.5 py-1.5 rounded-xl bg-white border border-[#FFD9CE] text-[11px] font-bold text-[#B45309] hover:bg-[#FEF3C7] flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                        title="คัดลอก PIN"
+                      >
+                        {copiedField === 'pin' ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                        <span>{copiedField === 'pin' ? 'คัดลอกแล้ว' : 'คัดลอก PIN'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Email Field */}
@@ -199,25 +276,6 @@ export function ProductModal({
                     </button>
                   </div>
                 </div>
-
-                {/* Profile Slot & PIN if exists */}
-                {orderResult.slotPin && (
-                  <div className="space-y-1">
-                    <span className="text-xs text-[#8D6E63] font-medium flex items-center gap-1">
-                      <UserCheck className="w-3.5 h-3.5" />
-                      รหัส PIN ประจำโปรไฟล์:
-                    </span>
-                    <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#E8DCCF] text-xs font-mono font-bold text-[#5D4037]">
-                      <span>{orderResult.slotPin}</span>
-                      <button
-                        onClick={() => handleCopy(orderResult.slotPin!, 'pin')}
-                        className="ml-2 p-1 rounded-lg hover:bg-[#FFF0EB] text-[#E5989B]"
-                      >
-                        {copiedField === 'pin' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Expiry Timestamp */}
                 <div className="pt-1 text-[11px] text-[#8D6E63] text-center font-medium">
@@ -339,6 +397,39 @@ export function ProductModal({
                   <span className="text-[#D84315] bg-[#FFF0EB] px-3 py-1 rounded-full border border-[#FFCCBC]">
                     สินค้าหมดชั่วคราว
                   </span>
+                )}
+              </div>
+
+              {/* Screen / Slot & PIN Type Badge */}
+              <div className="p-3.5 rounded-2xl bg-[#FFF5F2] border border-[#FFD9CE] flex items-center gap-2.5 text-xs">
+                {product.hasProfilePin || product.defaultSlotCount > 1 ? (
+                  <>
+                    <div className="w-8 h-8 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#E5989B] flex-shrink-0 shadow-2xs">
+                      <Monitor className="w-4 h-4" />
+                    </div>
+                    <div className="text-[#6D4C41]">
+                      <span className="font-extrabold text-[#5D4037] block">
+                        สิทธิ์แบบแบ่งจอส่วนตัว (พร้อมรหัส PIN เข้าจอ)
+                      </span>
+                      <span className="text-[11px] text-[#8D6E63] leading-relaxed block">
+                        ระบบจัดสรรคิวจอที่ว่างและรหัส PIN ให้คุณอัตโนมัติทันทีหลังกดซื้อ (ไม่ต้องเลือกจอเอง)
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-8 h-8 rounded-xl bg-white border border-[#C8E6C9] flex items-center justify-center text-[#2E7D32] flex-shrink-0 shadow-2xs">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div className="text-[#2E7D32]">
+                      <span className="font-extrabold text-[#1B5E20] block">
+                        บัญชีเต็มสิทธิ์ส่วนตัว (เมลร้าน/เมลส่วนตัว)
+                      </span>
+                      <span className="text-[11px] text-[#2E7D32]/80 leading-relaxed block">
+                        เข้าใช้งานได้ทันที ระบบส่งมอบข้อมูลบัญชีให้อัตโนมัติหลังกดซื้อ
+                      </span>
+                    </div>
+                  </>
                 )}
               </div>
 

@@ -6,6 +6,7 @@ import {
   adjustUserCreditAction,
   addStockAccountAction,
   updateStockAccountAction,
+  updateStockSlotsAction,
   recycleStockAccountAction,
   toggleProductActiveAction,
   saveProductAction,
@@ -42,6 +43,9 @@ import {
   Edit3,
   Trash2,
   ExternalLink,
+  Monitor,
+  Tv,
+  Smartphone,
 } from 'lucide-react';
 
 interface AdminClientProps {
@@ -121,6 +125,26 @@ export function AdminClient({
   const [editStockNotes, setEditStockNotes] = useState('');
   const [editBillingLoading, setEditBillingLoading] = useState(false);
 
+  // Slots with custom names, PINs, device type, and status for new stock
+  const [newStockSlots, setNewStockSlots] = useState<
+    {
+      slotName: string;
+      slotPin: string;
+      deviceType: string;
+      productId: string;
+      status: string;
+    }[]
+  >([
+    { slotName: 'เต็มจอ / 1 สิทธิ์', slotPin: '', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+  ]);
+
+  // Edit slots & PINs for existing stock modal
+  const [editSlotsStock, setEditSlotsStock] = useState<any | null>(null);
+  const [editSlotsData, setEditSlotsData] = useState<
+    { id: string; slotName: string; slotPin: string; deviceType: string; productId: string; status: string }[]
+  >([]);
+  const [editSlotsLoading, setEditSlotsLoading] = useState(false);
+
   const [editProductModal, setEditProductModal] = useState<any | null>(null);
   const [prodName, setProdName] = useState('');
   const [prodPrice, setProdPrice] = useState(89);
@@ -132,6 +156,8 @@ export function AdminClient({
   const [prodOtp, setProdOtp] = useState(false);
   const [prodLineOa, setProdLineOa] = useState('');
   const [prodCutoffType, setProdCutoffType] = useState<string>('ROUND_UP_HOUR');
+  const [prodHasProfilePin, setProdHasProfilePin] = useState(false);
+  const [prodDefaultSlotCount, setProdDefaultSlotCount] = useState(1);
   const [prodLoading, setProdLoading] = useState(false);
 
   // Bank Account Modal
@@ -235,12 +261,52 @@ export function AdminClient({
     }
   };
 
+  const applyNetflixPreset = () => {
+    setNewStockSlotCount(4);
+    setNewStockSlots([
+      { slotName: 'จอ 1 (มือถือ/แท็บเล็ต)', slotPin: '1234', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+      { slotName: 'จอ 2 (มือถือ/แท็บเล็ต)', slotPin: '2345', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+      { slotName: 'จอ 3 (มือถือ/แท็บเล็ต)', slotPin: '3456', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+      { slotName: 'จอ 4 (ทีวี/Smart TV)', slotPin: '4567', deviceType: 'TV', productId: '', status: 'AVAILABLE' },
+    ]);
+  };
+
+  const applySingleSlotPreset = () => {
+    setNewStockSlotCount(1);
+    setNewStockSlots([
+      { slotName: 'เต็มจอ / 1 สิทธิ์', slotPin: '', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+    ]);
+  };
+
+  const handleSlotCountChange = (count: number) => {
+    const n = Math.max(1, Math.min(10, count));
+    setNewStockSlotCount(n);
+    setNewStockSlots((prev) => {
+      const next = [];
+      for (let i = 0; i < n; i++) {
+        const isTv = i === n - 1 && n > 1;
+        next.push({
+          slotName: prev[i]?.slotName || (n > 1 ? `จอ ${i + 1}` : 'เต็มจอ / 1 สิทธิ์'),
+          slotPin: prev[i]?.slotPin || '',
+          deviceType: prev[i]?.deviceType || (isTv ? 'TV' : 'MOBILE'),
+          productId: prev[i]?.productId || '',
+          status: prev[i]?.status || 'AVAILABLE',
+        });
+      }
+      return next;
+    });
+  };
+
   const handleCreateStock = async (e: React.FormEvent) => {
     e.preventDefault();
     setNewStockLoading(true);
 
-    const slots = Array.from({ length: newStockSlotCount }, (_, i) => ({
-      slotName: newStockSlotCount > 1 ? `จอ ${i + 1}` : 'เต็มจอ / 1 สิทธิ์',
+    const slots = newStockSlots.map((s, idx) => ({
+      slotName: s.slotName.trim() || `จอ ${idx + 1}`,
+      slotPin: s.slotPin.trim() || undefined,
+      deviceType: s.deviceType || 'MOBILE',
+      productId: s.productId.trim() || null,
+      status: s.status || 'AVAILABLE',
     }));
 
     const res = await addStockAccountAction({
@@ -260,6 +326,43 @@ export function AdminClient({
       window.location.reload();
     } else {
       alert('เพิ่มสต็อกไม่สำเร็จ');
+    }
+  };
+
+  const handleSaveEditSlots = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editSlotsStock) return;
+    setEditSlotsLoading(true);
+
+    const res = await updateStockSlotsAction(editSlotsStock.id, editSlotsData);
+    setEditSlotsLoading(false);
+
+    if (res.success) {
+      setStocks(
+        stocks.map((s) =>
+          s.id === editSlotsStock.id
+            ? {
+                ...s,
+                slots: s.slots.map((sl: any) => {
+                  const found = editSlotsData.find((d) => d.id === sl.id);
+                  return found
+                    ? {
+                        ...sl,
+                        slotName: found.slotName,
+                        slotPin: found.slotPin.trim() || null,
+                        deviceType: found.deviceType,
+                        productId: found.productId || null,
+                        status: found.status,
+                      }
+                    : sl;
+                }),
+              }
+            : s
+        )
+      );
+      setEditSlotsStock(null);
+    } else {
+      alert('อัปเดตข้อมูลจอ/PIN ไม่สำเร็จ');
     }
   };
 
@@ -320,6 +423,8 @@ export function AdminClient({
       otpEnabled: prodOtp,
       lineOaUrl: prodLineOa || undefined,
       cutoffType: prodCutoffType || 'ROUND_UP_HOUR',
+      hasProfilePin: prodHasProfilePin,
+      defaultSlotCount: prodDefaultSlotCount,
       isActive: editProductModal ? editProductModal.isActive : true,
     });
     setProdLoading(false);
@@ -795,6 +900,27 @@ export function AdminClient({
                       </span>
                     )}
 
+                    {/* Quick edit slots & PINs button */}
+                    <button
+                      onClick={() => {
+                        setEditSlotsStock(stock);
+                        setEditSlotsData(
+                          stock.slots.map((sl: any) => ({
+                            id: sl.id,
+                            slotName: sl.slotName,
+                            slotPin: sl.slotPin || '',
+                            deviceType: sl.deviceType || 'MOBILE',
+                            productId: sl.productId || '',
+                            status: sl.status || 'AVAILABLE',
+                          }))
+                        );
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#8D6E63] hover:text-[#5D4037] hover:bg-[#FFF8F3] border border-[#E8DCCF] transition-colors"
+                    >
+                      <Key className="w-3 h-3 text-[#FFB4A2]" />
+                      <span>แก้ไขชื่อจอ & PIN</span>
+                    </button>
+
                     {/* Quick edit billing button */}
                     <button
                       onClick={() => {
@@ -805,7 +931,7 @@ export function AdminClient({
                         setEditAutoRenew(stock.autoRenew !== false);
                         setEditStockNotes(stock.notes || '');
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#8D6E63] hover:text-[#5D4037] hover:bg-[#FFF8F3] border border-[#E8DCCF] transition-colors ml-auto"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#8D6E63] hover:text-[#5D4037] hover:bg-[#FFF8F3] border border-[#E8DCCF] transition-colors"
                     >
                       <Edit3 className="w-3 h-3 text-[#FFB4A2]" />
                       <span>แก้ไขรอบบิล/ช่องทางชำระ</span>
@@ -822,15 +948,30 @@ export function AdminClient({
                             ? 'bg-[#ECFDF5] border-[#A7F3D0] text-[#059669]'
                             : slot.status === 'ASSIGNED'
                             ? 'bg-[#FDFBF7] border-[#FFD9CE] text-[#6D4C41]'
+                            : slot.status === 'LOCKED'
+                            ? 'bg-[#F3F4F6] border-[#E5E7EB] text-[#6B7280]'
                             : 'bg-[#FFF1F2] border-[#FECDD3] text-[#E11D48]'
                         }`}
                       >
                         <div className="flex items-center justify-between font-bold">
-                          <span>{slot.slotName}</span>
-                          <span className="text-[10px] uppercase">{slot.status}</span>
+                          <span className="flex items-center gap-1">
+                            {slot.deviceType === 'TV' ? (
+                              <Tv className="w-3 h-3 text-[#D97706]" />
+                            ) : (
+                              <Smartphone className="w-3 h-3 text-[#0284C7]" />
+                            )}
+                            <span className="truncate">{slot.slotName}</span>
+                          </span>
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded-md bg-white/80 border border-current">
+                            {slot.status === 'LOCKED' ? 'ล็อกไว้' : slot.status === 'AVAILABLE' ? 'ว่าง' : slot.status}
+                          </span>
                         </div>
-                        {slot.slotPin && (
-                          <div className="text-[10px] text-[#8D6E63] mt-0.5">PIN: {slot.slotPin}</div>
+                        {slot.slotPin ? (
+                          <div className="text-[10px] text-[#8D6E63] font-mono font-bold mt-1">
+                            PIN: <span className="text-[#5D4037]">{slot.slotPin}</span>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-[#9CA3AF] mt-1">ไม่มี PIN</div>
                         )}
                         {slot.assignedUser && (
                           <div className="text-[10px] text-[#8D6E63] mt-0.5 truncate">
@@ -867,6 +1008,8 @@ export function AdminClient({
                 setProdOtp(false);
                 setProdLineOa('');
                 setProdCutoffType('ROUND_UP_HOUR');
+                setProdHasProfilePin(false);
+                setProdDefaultSlotCount(1);
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
             >
@@ -887,10 +1030,20 @@ export function AdminClient({
                     <h3 className="font-extrabold text-sm text-[#5D4037] leading-snug">{p.name}</h3>
                     <p className="text-xs text-[#8D6E63]">{p.category?.name} • {p.durationDays} วัน</p>
                     <p className="text-sm font-black text-[#E5989B] mt-1">{p.price} ฿</p>
-                    <div className="pt-1">
+                    <div className="pt-1 flex flex-wrap gap-1">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF8F3] text-[#6D4C41] border border-[#FFD9CE]">
                         ตัดรอบ: {p.cutoffType === 'MIDNIGHT' ? 'เที่ยงคืน (23:59)' : p.cutoffType === 'EXACT_TIME' ? 'เวลาตรง 24 ชม.' : 'ปัดขึ้นชั่วโมง'}
                       </span>
+                      {p.hasProfilePin ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] flex items-center gap-1">
+                          <Key className="w-2.5 h-2.5" />
+                          มี PIN ({p.defaultSlotCount || 1} จอ)
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F5EBE1] text-[#8D6E63]">
+                          เต็มสิทธิ์ (1 จอ)
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -920,6 +1073,8 @@ export function AdminClient({
                       setProdOtp(p.otpEnabled);
                       setProdLineOa(p.lineOaUrl || '');
                       setProdCutoffType(p.cutoffType || 'ROUND_UP_HOUR');
+                      setProdHasProfilePin(p.hasProfilePin ?? false);
+                      setProdDefaultSlotCount(p.defaultSlotCount ?? 1);
                     }}
                     className="text-xs font-bold text-[#FFB4A2] hover:underline"
                   >
@@ -1507,99 +1662,176 @@ export function AdminClient({
         const projectedBalance = Math.max(0, creditModalUser.creditBalance + delta);
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
-            <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
-              <h3 className="font-extrabold text-base text-[#5D4037]">
-                ปรับเครดิตให้: @{creditModalUser.username}
+          <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+            <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+              {/* Sticky Header */}
+              <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+                <h3 className="font-extrabold text-base text-[#5D4037]">
+                  ปรับเครดิตให้: @{creditModalUser.username}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setCreditModalUser(null)}
+                  className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                {/* Type Switcher: ADD or DEDUCT */}
+                <div className="grid grid-cols-2 gap-2 bg-[#F5EBE1] p-1 rounded-full">
+                  <button
+                    type="button"
+                    onClick={() => setCreditType('ADD')}
+                    className={`py-2 rounded-full text-xs font-bold transition-all ${
+                      creditType === 'ADD'
+                        ? 'bg-[#E8F5E9] text-[#2E7D32] shadow-xs'
+                        : 'text-[#8D6E63] hover:text-[#5D4037]'
+                    }`}
+                  >
+                    + เพิ่มเครดิต
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreditType('DEDUCT')}
+                    className={`py-2 rounded-full text-xs font-bold transition-all ${
+                      creditType === 'DEDUCT'
+                        ? 'bg-[#FFF0EB] text-[#D84315] shadow-xs'
+                        : 'text-[#8D6E63] hover:text-[#5D4037]'
+                    }`}
+                  >
+                    - ลด / หักเครดิต
+                  </button>
+                </div>
+
+                {/* Live Calculation Preview Card */}
+                <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-1.5 text-xs">
+                  <div className="flex justify-between text-[#8D6E63]">
+                    <span>เครดิตปัจจุบัน:</span>
+                    <span className="font-bold">{creditModalUser.creditBalance.toLocaleString()} ฿</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>ยอดที่ปรับ:</span>
+                    <span className={creditType === 'ADD' ? 'text-[#2E7D32]' : 'text-[#D84315]'}>
+                      {creditType === 'ADD' ? '+' : '-'}{Math.abs(creditAmount).toLocaleString()} ฿
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-[#E8DCCF] pt-1.5 font-black text-sm text-[#5D4037]">
+                    <span>คงเหลือหลังปรับ:</span>
+                    <span className="text-[#E5989B]">{projectedBalance.toLocaleString()} ฿</span>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAdjustCredit} className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">
+                      จำนวนเงิน (บาท) *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      required
+                      value={creditAmount}
+                      onChange={(e) => setCreditAmount(Math.abs(parseFloat(e.target.value) || 0))}
+                      className="w-full miki-input text-sm font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">เหตุผลการปรับ (จำเป็นเพื่อ Audit Log) *</label>
+                    <textarea
+                      rows={2}
+                      required
+                      value={creditReason}
+                      onChange={(e) => setCreditReason(e.target.value)}
+                      placeholder="เช่น เติมเงินมือถือตกหล่น, ปรับลดเนื่องจากยกเลิกคำสั่งซื้อ..."
+                      className="w-full miki-input text-xs"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="submit"
+                      disabled={creditLoading}
+                      className={`flex-1 py-2.5 rounded-full text-xs font-bold text-white shadow-xs transition-all ${
+                        creditType === 'ADD'
+                          ? 'bg-[#2E7D32] hover:bg-[#1B5E20]'
+                          : 'bg-[#D84315] hover:bg-[#BF360C]'
+                      }`}
+                    >
+                      {creditLoading ? 'กำลังบันทึก...' : `ยืนยัน${creditType === 'ADD' ? 'เพิ่ม' : 'หัก'}เครดิต`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreditModalUser(null)}
+                      className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL: RECYCLE EXPIRED ACCOUNT */}
+      {recycleStock && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-[#FFB4A2]" />
+                <span>นำบัญชีกลับเข้าสต็อก (Recycle)</span>
               </h3>
+              <button
+                type="button"
+                onClick={() => setRecycleStock(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {/* Type Switcher: ADD or DEDUCT */}
-              <div className="grid grid-cols-2 gap-2 bg-[#F5EBE1] p-1 rounded-full">
-                <button
-                  type="button"
-                  onClick={() => setCreditType('ADD')}
-                  className={`py-2 rounded-full text-xs font-bold transition-all ${
-                    creditType === 'ADD'
-                      ? 'bg-[#E8F5E9] text-[#2E7D32] shadow-xs'
-                      : 'text-[#8D6E63] hover:text-[#5D4037]'
-                  }`}
-                >
-                  + เพิ่มเครดิต
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreditType('DEDUCT')}
-                  className={`py-2 rounded-full text-xs font-bold transition-all ${
-                    creditType === 'DEDUCT'
-                      ? 'bg-[#FFF0EB] text-[#D84315] shadow-xs'
-                      : 'text-[#8D6E63] hover:text-[#5D4037]'
-                  }`}
-                >
-                  - ลด / หักเครดิต
-                </button>
-              </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <p className="text-xs text-[#8D6E63]">
+                บัญชี: <span className="font-bold text-[#5D4037]">{recycleStock.email}</span> ({recycleStock.productName})
+              </p>
 
-              {/* Live Calculation Preview Card */}
-              <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-1.5 text-xs">
-                <div className="flex justify-between text-[#8D6E63]">
-                  <span>เครดิตปัจจุบัน:</span>
-                  <span className="font-bold">{creditModalUser.creditBalance.toLocaleString()} ฿</span>
-                </div>
-                <div className="flex justify-between font-bold">
-                  <span>ยอดที่ปรับ:</span>
-                  <span className={creditType === 'ADD' ? 'text-[#2E7D32]' : 'text-[#D84315]'}>
-                    {creditType === 'ADD' ? '+' : '-'}{Math.abs(creditAmount).toLocaleString()} ฿
-                  </span>
-                </div>
-                <div className="flex justify-between border-t border-[#E8DCCF] pt-1.5 font-black text-sm text-[#5D4037]">
-                  <span>คงเหลือหลังปรับ:</span>
-                  <span className="text-[#E5989B]">{projectedBalance.toLocaleString()} ฿</span>
-                </div>
-              </div>
-
-              <form onSubmit={handleAdjustCredit} className="space-y-3">
+              <form onSubmit={handleRecycleAccount} className="space-y-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-[#5D4037]">
-                    จำนวนเงิน (บาท) *
+                    รหัสผ่านใหม่ (ที่แอดมินเปลี่ยนในแอปจริงแล้ว) *
                   </label>
                   <input
-                    type="number"
-                    min="1"
-                    step="any"
+                    type="text"
                     required
-                    value={creditAmount}
-                    onChange={(e) => setCreditAmount(Math.abs(parseFloat(e.target.value) || 0))}
-                    className="w-full miki-input text-sm font-bold"
+                    value={recycleNewPassword}
+                    onChange={(e) => setRecycleNewPassword(e.target.value)}
+                    placeholder="ระบุรหัสผ่านใหม่..."
+                    className="w-full miki-input text-xs font-mono font-bold"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">เหตุผลการปรับ (จำเป็นเพื่อ Audit Log) *</label>
-                  <textarea
-                    rows={2}
-                    required
-                    value={creditReason}
-                    onChange={(e) => setCreditReason(e.target.value)}
-                    placeholder="เช่น เติมเงินมือถือตกหล่น, ปรับลดเนื่องจากยกเลิกคำสั่งซื้อ..."
-                    className="w-full miki-input text-xs"
-                  />
+                <div className="p-3 rounded-xl bg-[#FFFDF5] border border-[#FDE68A] text-[11px] text-[#6D4C41]">
+                  เมื่อกดยืนยัน ระบบจะเข้ารหัสผ่านใหม่ด้วย AES-256-GCM และรีเซ็ตสถานะจอทั้งหมดให้กลับมาเป็นพร้อมขาย (AVAILABLE) อัตโนมัติ
                 </div>
 
                 <div className="flex gap-2 pt-2">
                   <button
                     type="submit"
-                    disabled={creditLoading}
-                    className={`flex-1 py-2.5 rounded-full text-xs font-bold text-white shadow-xs transition-all ${
-                      creditType === 'ADD'
-                        ? 'bg-[#2E7D32] hover:bg-[#1B5E20]'
-                        : 'bg-[#D84315] hover:bg-[#BF360C]'
-                    }`}
+                    disabled={recycleLoading}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
                   >
-                    {creditLoading ? 'กำลังบันทึก...' : `ยืนยัน${creditType === 'ADD' ? 'เพิ่ม' : 'หัก'}เครดิต`}
+                    {recycleLoading ? 'กำลังอัปเดต...' : 'ยืนยันและนำเข้าสต็อก'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCreditModalUser(null)}
+                    onClick={() => setRecycleStock(null)}
                     className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
                   >
                     ยกเลิก
@@ -1608,54 +1840,304 @@ export function AdminClient({
               </form>
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      {/* MODAL: RECYCLE EXPIRED ACCOUNT */}
-      {recycleStock && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
-            <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
-              <RotateCcw className="w-5 h-5 text-[#FFB4A2]" />
-              <span>นำบัญชีกลับเข้าสต็อก (Recycle)</span>
-            </h3>
-            <p className="text-xs text-[#8D6E63]">
-              บัญชี: <span className="font-bold text-[#5D4037]">{recycleStock.email}</span> ({recycleStock.productName})
-            </p>
+      {/* MODAL: ADD NEW STOCK ACCOUNT */}
+      {newStockModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-xl bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Package className="w-5 h-5 text-[#FFB4A2]" />
+                <span>เพิ่มสต็อกบัญชีใหม่ (เข้ารหัส AES-256-GCM)</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setNewStockModal(false)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleRecycleAccount} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">
-                  รหัสผ่านใหม่ (ที่แอดมินเปลี่ยนในแอปจริงแล้ว) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={recycleNewPassword}
-                  onChange={(e) => setRecycleNewPassword(e.target.value)}
-                  placeholder="ระบุรหัสผ่านใหม่..."
-                  className="w-full miki-input text-xs font-mono font-bold"
-                />
+            <form onSubmit={handleCreateStock} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">เลือกสินค้า</label>
+                  <select
+                    value={newStockProduct}
+                    onChange={(e) => {
+                      const prodId = e.target.value;
+                      setNewStockProduct(prodId);
+                      const prod = products.find((p) => p.id === prodId);
+                      if (prod && prod.hasProfilePin) {
+                        applyNetflixPreset();
+                      }
+                    }}
+                    className="w-full miki-input text-xs font-bold"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.hasProfilePin ? `(แบ่ง ${p.defaultSlotCount || 1} จอ + PIN)` : '(เต็มสิทธิ์)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">อีเมลบัญชี *</label>
+                    <input
+                      type="email"
+                      required
+                      value={newStockEmail}
+                      onChange={(e) => setNewStockEmail(e.target.value)}
+                      className="w-full miki-input text-xs font-mono font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">รหัสผ่าน *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newStockPassword}
+                      onChange={(e) => setNewStockPassword(e.target.value)}
+                      className="w-full miki-input text-xs font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">
+                    จำนวนจอ / สิทธิ์ที่ขายได้ (เช่น Netflix = 4, เมลเดี่ยว = 1)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={newStockSlotCount}
+                    onChange={(e) => handleSlotCountChange(parseInt(e.target.value) || 1)}
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[11px] font-bold text-[#8D6E63]">พรีเซ็ตด่วน:</span>
+                  <button
+                    type="button"
+                    onClick={applyNetflixPreset}
+                    className="px-3 py-1 rounded-full text-[11px] font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] active:scale-95 transition-all shadow-2xs flex items-center gap-1"
+                  >
+                    <Tv className="w-3 h-3" />
+                    <span>Netflix (จอ 1-3 มือถือ + จอ 4 ทีวี)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applySingleSlotPreset}
+                    className="px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#5D4037] border border-[#E8DCCF] hover:bg-[#FFFDF5] active:scale-95 transition-all shadow-2xs"
+                  >
+                    <span>เต็มจอ / 1 สิทธิ์</span>
+                  </button>
+                </div>
+
+                {/* Dynamic Slot Name, PIN, Device Type Inputs */}
+                <div className="space-y-2.5 p-3.5 rounded-2xl bg-[#FFFDF8] border border-[#E8DCCF]">
+                  <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
+                    <span className="flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-[#FFB4A2]" />
+                      <span>กำหนดชื่อจอ, รหัส PIN, และประเภทอุปกรณ์</span>
+                    </span>
+                    <span className="text-[11px] font-normal text-[#8D6E63]">{newStockSlotCount} จอ</span>
+                  </div>
+
+                  <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                    {newStockSlots.map((slot, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-2xl bg-white border border-[#FFD9CE] shadow-2xs space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-6 h-6 rounded-lg bg-[#FFF0EB] text-[#E5989B] flex items-center justify-center text-[11px] font-extrabold">
+                              {idx + 1}
+                            </span>
+                            <span>จอที่ {idx + 1}</span>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {/* Device type selector */}
+                            <select
+                              value={slot.deviceType || 'MOBILE'}
+                              onChange={(e) => {
+                                const updated = [...newStockSlots];
+                                updated[idx].deviceType = e.target.value;
+                                setNewStockSlots(updated);
+                              }}
+                              className="text-[10px] font-bold py-1 px-2 rounded-lg border border-[#FFD9CE] bg-[#FFF8F3] text-[#6D4C41]"
+                            >
+                              <option value="MOBILE">มือถือ/แท็บเล็ต (Mobile)</option>
+                              <option value="TV">สมาร์ททีวี (Smart TV)</option>
+                              <option value="ALL">ทุกอุปกรณ์ (All)</option>
+                            </select>
+
+                            {/* Status toggle */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...newStockSlots];
+                                updated[idx].status = updated[idx].status === 'LOCKED' ? 'AVAILABLE' : 'LOCKED';
+                                setNewStockSlots(updated);
+                              }}
+                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all ${
+                                slot.status === 'LOCKED'
+                                  ? 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
+                                  : 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
+                              }`}
+                            >
+                              {slot.status === 'LOCKED' ? 'ล็อกไว้ (ไม่ขาย)' : 'พร้อมขาย'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[#8D6E63]">ชื่อจอ / โปรไฟล์</label>
+                            <input
+                              type="text"
+                              value={slot.slotName}
+                              onChange={(e) => {
+                                const updated = [...newStockSlots];
+                                updated[idx].slotName = e.target.value;
+                                setNewStockSlots(updated);
+                              }}
+                              placeholder="เช่น จอ 1 (มือถือ/แท็บเล็ต)"
+                              className="w-full miki-input text-xs py-1.5"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-[#8D6E63]">รหัส PIN (ถ้ามี)</label>
+                            <input
+                              type="text"
+                              value={slot.slotPin}
+                              onChange={(e) => {
+                                const updated = [...newStockSlots];
+                                updated[idx].slotPin = e.target.value;
+                                setNewStockSlots(updated);
+                              }}
+                              placeholder="PIN เช่น 1234 (หรือเว้นว่าง)"
+                              className="w-full miki-input text-xs py-1.5 font-mono font-bold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">หมายเหตุช่วยจำ (แอดมินเห็นเท่านั้น)</label>
+                  <input
+                    type="text"
+                    value={newStockNotes}
+                    onChange={(e) => setNewStockNotes(e.target.value)}
+                    placeholder="เช่น Family เมลหลัก ตัดรอบวันที่ 10"
+                    className="w-full miki-input text-xs"
+                  />
+                </div>
+
+                {/* App Subscription & Billing Info Inputs */}
+                <div className="p-3.5 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] space-y-3">
+                  <div className="font-bold text-xs text-[#5D4037] flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-[#FFB4A2]" />
+                    <span>ข้อมูลการสมัครและรอบบิลของแอพจริง</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-[#8D6E63]">วันที่เริ่มสมัครแอพ</label>
+                      <input
+                        type="date"
+                        value={newStockRegisteredAt}
+                        onChange={(e) => setNewStockRegisteredAt(e.target.value)}
+                        className="w-full miki-input text-xs font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-[#8D6E63]">วันที่แอพตัดเงินรอบถัดไป</label>
+                      <input
+                        type="date"
+                        value={newStockBillingDate}
+                        onChange={(e) => setNewStockBillingDate(e.target.value)}
+                        className="w-full miki-input text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-[#8D6E63]">ช่องทางที่แอพตัดเงิน</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={
+                          ['TrueMoney Wallet', 'บัตรเดบิต KBank', 'บัตรเดบิต SCB', 'บัตรเครดิต', 'AIS Billing'].includes(
+                            newStockPaymentMethod
+                          )
+                            ? newStockPaymentMethod
+                            : 'CUSTOM'
+                        }
+                        onChange={(e) => {
+                          if (e.target.value !== 'CUSTOM') setNewStockPaymentMethod(e.target.value);
+                          else setNewStockPaymentMethod('');
+                        }}
+                        className="miki-input text-xs font-bold w-1/2"
+                      >
+                        <option value="TrueMoney Wallet">TrueMoney Wallet</option>
+                        <option value="บัตรเดบิต KBank">บัตรเดบิต KBank</option>
+                        <option value="บัตรเดบิต SCB">บัตรเดบิต SCB</option>
+                        <option value="บัตรเครดิต">บัตรเครดิต</option>
+                        <option value="AIS Billing">AIS Billing</option>
+                        <option value="CUSTOM">อื่น ๆ (พิมพ์เอง)</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={newStockPaymentMethod}
+                        onChange={(e) => setNewStockPaymentMethod(e.target.value)}
+                        placeholder="ระบุช่องทางตัดเงิน..."
+                        className="w-1/2 miki-input text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037] pt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newStockAutoRenew}
+                      onChange={(e) => setNewStockAutoRenew(e.target.checked)}
+                      className="rounded text-[#FFB4A2]"
+                    />
+                    <span>แอพนี้เปิดระบบต่ออายุอัตโนมัติ (Auto-Renew)</span>
+                  </label>
+                </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-[#FFFDF5] border border-[#FDE68A] text-[11px] text-[#6D4C41]">
-                เมื่อกดยืนยัน ระบบจะเข้ารหัสผ่านใหม่ด้วย AES-256-GCM และรีเซ็ตสถานะจอทั้งหมดให้กลับมาเป็นพร้อมขาย (AVAILABLE) อัตโนมัติ
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={recycleLoading}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
-                >
-                  {recycleLoading ? 'กำลังอัปเดต...' : 'ยืนยันและนำเข้าสต็อก'}
-                </button>
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 bg-[#FAF7F2] border-t border-[#F5EBE1] flex justify-end gap-2 flex-shrink-0 sticky bottom-0 z-10">
                 <button
                   type="button"
-                  onClick={() => setRecycleStock(null)}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                  onClick={() => setNewStockModal(false)}
+                  className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
                 >
                   ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={newStockLoading}
+                  className="px-6 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
+                >
+                  {newStockLoading ? 'กำลังบันทึก...' : 'บันทึกเข้าสต็อก'}
                 </button>
               </div>
             </form>
@@ -1663,94 +2145,283 @@ export function AdminClient({
         </div>
       )}
 
-      {/* MODAL: ADD NEW STOCK ACCOUNT */}
-      {newStockModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
-            <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
-              <Package className="w-5 h-5 text-[#FFB4A2]" />
-              <span>เพิ่มสต็อกบัญชีใหม่ (เข้ารหัส AES-256-GCM)</span>
-            </h3>
+      {/* MODAL: EDIT PRODUCT */}
+      {editProductModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-lg bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Layers className="w-5 h-5 text-[#FFB4A2]" />
+                <span>{editProductModal.isNew ? 'เพิ่มสินค้าใหม่' : `แก้ไขสินค้า: ${editProductModal.name}`}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditProductModal(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleCreateStock} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">เลือกสินค้า</label>
-                <select
-                  value={newStockProduct}
-                  onChange={(e) => setNewStockProduct(e.target.value)}
-                  className="w-full miki-input text-xs font-bold"
-                >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveProduct} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">อีเมลบัญชี *</label>
-                  <input
-                    type="email"
-                    required
-                    value={newStockEmail}
-                    onChange={(e) => setNewStockEmail(e.target.value)}
-                    className="w-full miki-input text-xs font-mono font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">รหัสผ่าน *</label>
+                  <label className="text-xs font-bold text-[#5D4037]">ชื่อสินค้า *</label>
                   <input
                     type="text"
                     required
-                    value={newStockPassword}
-                    onChange={(e) => setNewStockPassword(e.target.value)}
-                    className="w-full miki-input text-xs font-mono font-bold"
+                    value={prodName}
+                    onChange={(e) => setProdName(e.target.value)}
+                    className="w-full miki-input text-xs font-bold"
                   />
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">
-                  จำนวนจอ / สิทธิ์ที่ขายได้ (เช่น Netflix = 4, เมลเดี่ยว = 1)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={newStockSlotCount}
-                  onChange={(e) => setNewStockSlotCount(parseInt(e.target.value) || 1)}
-                  className="w-full miki-input text-xs font-bold"
-                />
-              </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">ราคา (บาท) *</label>
+                    <input
+                      type="number"
+                      required
+                      value={prodPrice}
+                      onChange={(e) => setProdPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">หมายเหตุช่วยจำ (แอดมินเห็นเท่านั้น)</label>
-                <input
-                  type="text"
-                  value={newStockNotes}
-                  onChange={(e) => setNewStockNotes(e.target.value)}
-                  placeholder="เช่น Family เมลหลัก ตัดรอบวันที่ 10"
-                  className="w-full miki-input text-xs"
-                />
-              </div>
-
-              {/* App Subscription & Billing Info Inputs */}
-              <div className="p-3.5 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] space-y-3">
-                <div className="font-bold text-xs text-[#5D4037] flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-[#FFB4A2]" />
-                  <span>ข้อมูลการสมัครและรอบบิลของแอพจริง</span>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">อายุการใช้งาน (วัน) *</label>
+                    <input
+                      type="number"
+                      required
+                      value={prodDuration}
+                      onChange={(e) => setProdDuration(parseInt(e.target.value) || 30)}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">หมวดหมู่</label>
+                  <select
+                    value={prodCategory}
+                    onChange={(e) => setProdCategory(e.target.value)}
+                    className="w-full miki-input text-xs font-bold"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">รูปภาพสินค้า (URL) *</label>
+                  <input
+                    type="url"
+                    required
+                    value={prodImage}
+                    onChange={(e) => setProdImage(e.target.value)}
+                    className="w-full miki-input text-xs"
+                  />
+                </div>
+
+                {/* Screen & PIN Profile Settings (Requested Feature) */}
+                <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-3">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-[#5D4037]">
+                    <Key className="w-4 h-4 text-[#E5989B]" />
+                    <span>การตั้งค่าระบบจอและ PIN (Screen & Profile PIN)</span>
+                  </div>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer text-xs">
+                    <input
+                      type="checkbox"
+                      checked={prodHasProfilePin}
+                      onChange={(e) => setProdHasProfilePin(e.target.checked)}
+                      className="rounded text-[#E5989B] mt-0.5"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5D4037] block">
+                        สินค้านี้เป็นแบบแบ่งจอ และมีรหัส PIN ประจำจอ (เช่น Netflix, Disney+)
+                      </span>
+                      <span className="text-[11px] text-[#8D6E63] leading-relaxed block">
+                        ระบบจะแสดงป้าย [แยกจอเดี่ยว + PIN] ให้ลูกค้าทราบ และจะเปิดช่องกรอกชื่อจอและ PIN ให้อัตโนมัติในตอนเพิ่มสต็อก
+                      </span>
+                    </div>
+                  </label>
+
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[11px] font-bold text-[#8D6E63]">
+                      จำนวนจอมาตรฐานต่อ 1 บัญชี (เช่น Netflix = 4 จอ, บัญชีทั่วไป = 1 จอ)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={prodDefaultSlotCount}
+                      onChange={(e) => setProdDefaultSlotCount(parseInt(e.target.value) || 1)}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">กฎระเบียบการใช้งาน</label>
+                  <textarea
+                    rows={2}
+                    value={prodRules}
+                    onChange={(e) => setProdRules(e.target.value)}
+                    className="w-full miki-input text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">วิธีเข้าใช้งาน (คู่มือ)</label>
+                  <textarea
+                    rows={2}
+                    value={prodGuide}
+                    onChange={(e) => setProdGuide(e.target.value)}
+                    className="w-full miki-input text-xs"
+                  />
+                </div>
+
+                {/* Cutoff Type Selection */}
+                <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-[#5D4037]">
+                    <Clock className="w-4 h-4 text-[#D84315]" />
+                    <span>รูปแบบการตัดรอบบัญชี (Cutoff Rule)</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
+                      <input
+                        type="radio"
+                        name="cutoffType"
+                        value="ROUND_UP_HOUR"
+                        checked={prodCutoffType === 'ROUND_UP_HOUR'}
+                        onChange={(e) => setProdCutoffType(e.target.value)}
+                        className="text-[#E5989B]"
+                      />
+                      <div>
+                        <span className="font-bold text-[#5D4037]">ปัดเศษขึ้นชั่วโมงถัดไป (เช่น 15:23 ปัดเป็น 16:00 น.)</span>
+                        <p className="text-[11px] text-[#8D6E63]">สะดวกต่อการจัดคิวเปลี่ยนรหัสผ่านแอคเคาท์</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
+                      <input
+                        type="radio"
+                        name="cutoffType"
+                        value="MIDNIGHT"
+                        checked={prodCutoffType === 'MIDNIGHT'}
+                        onChange={(e) => setProdCutoffType(e.target.value)}
+                        className="text-[#E5989B]"
+                      />
+                      <div>
+                        <span className="font-bold text-[#5D4037]">ตัดรอบเที่ยงคืน (Midnight Cutoff - 23:59:59 น.)</span>
+                        <p className="text-[11px] text-[#8D6E63]">สำหรับบัญชีเน็ตฟิกหรือแอพที่ตัดตามรอบวันสิ้นสุดเที่ยงคืน</p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
+                      <input
+                        type="radio"
+                        name="cutoffType"
+                        value="EXACT_TIME"
+                        checked={prodCutoffType === 'EXACT_TIME'}
+                        onChange={(e) => setProdCutoffType(e.target.value)}
+                        className="text-[#E5989B]"
+                      />
+                      <div>
+                        <span className="font-bold text-[#5D4037]">เวลาตรงเป๊ะ (Exact 24 ชั่วโมงต่อวัน)</span>
+                        <p className="text-[11px] text-[#8D6E63]">นับตามเวลาสั่งซื้อตรงตัว</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* OTP Options */}
+                <div className="p-3 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] space-y-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037]">
+                    <input
+                      type="checkbox"
+                      checked={prodOtp}
+                      onChange={(e) => setProdOtp(e.target.checked)}
+                      className="rounded text-[#FFB4A2]"
+                    />
+                    <span>เปิดใช้งานปุ่มขอรหัส OTP ผ่าน LINE Official Account</span>
+                  </label>
+
+                  {prodOtp && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[11px] font-bold text-[#8D6E63]">ลิงก์ LINE Official Account</label>
+                      <input
+                        type="url"
+                        value={prodLineOa}
+                        onChange={(e) => setProdLineOa(e.target.value)}
+                        placeholder="https://line.me/R/ti/p/@miki.store"
+                        className="w-full miki-input text-xs"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 bg-[#FAF7F2] border-t border-[#F5EBE1] flex justify-end gap-2 flex-shrink-0 sticky bottom-0 z-10">
+                <button
+                  type="button"
+                  onClick={() => setEditProductModal(null)}
+                  className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={prodLoading}
+                  className="px-6 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
+                >
+                  {prodLoading ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT STOCK BILLING & SUBSCRIPTION */}
+      {editBillingStock && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[#FFB4A2]" />
+                <span>แก้ไขรอบบิลและช่องทางตัดเงิน</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditBillingStock(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <p className="text-xs text-[#8D6E63]">
+                บัญชี: <span className="font-bold text-[#5D4037]">{editBillingStock.email}</span> ({editBillingStock.productName})
+              </p>
+
+              <form onSubmit={handleUpdateStockBilling} className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-[#8D6E63]">วันที่เริ่มสมัครแอพ</label>
                     <input
                       type="date"
-                      value={newStockRegisteredAt}
-                      onChange={(e) => setNewStockRegisteredAt(e.target.value)}
+                      value={editRegisteredAt}
+                      onChange={(e) => setEditRegisteredAt(e.target.value)}
                       className="w-full miki-input text-xs font-bold"
                     />
                   </div>
@@ -1759,8 +2430,8 @@ export function AdminClient({
                     <label className="text-[11px] font-bold text-[#8D6E63]">วันที่แอพตัดเงินรอบถัดไป</label>
                     <input
                       type="date"
-                      value={newStockBillingDate}
-                      onChange={(e) => setNewStockBillingDate(e.target.value)}
+                      value={editBillingDate}
+                      onChange={(e) => setEditBillingDate(e.target.value)}
                       className="w-full miki-input text-xs font-bold"
                     />
                   </div>
@@ -1772,303 +2443,10 @@ export function AdminClient({
                     <select
                       value={
                         ['TrueMoney Wallet', 'บัตรเดบิต KBank', 'บัตรเดบิต SCB', 'บัตรเครดิต', 'AIS Billing'].includes(
-                          newStockPaymentMethod
+                          editPaymentMethod
                         )
-                          ? newStockPaymentMethod
-                          : 'CUSTOM'
-                      }
-                      onChange={(e) => {
-                        if (e.target.value !== 'CUSTOM') setNewStockPaymentMethod(e.target.value);
-                        else setNewStockPaymentMethod('');
-                      }}
-                      className="miki-input text-xs font-bold w-1/2"
-                    >
-                      <option value="TrueMoney Wallet">TrueMoney Wallet</option>
-                      <option value="บัตรเดบิต KBank">บัตรเดบิต KBank</option>
-                      <option value="บัตรเดบิต SCB">บัตรเดบิต SCB</option>
-                      <option value="บัตรเครดิต">บัตรเครดิต</option>
-                      <option value="AIS Billing">AIS Billing</option>
-                      <option value="CUSTOM">อื่น ๆ (พิมพ์เอง)</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={newStockPaymentMethod}
-                      onChange={(e) => setNewStockPaymentMethod(e.target.value)}
-                      placeholder="ระบุช่องทางตัดเงิน..."
-                      className="w-1/2 miki-input text-xs font-bold"
-                    />
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037] pt-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newStockAutoRenew}
-                    onChange={(e) => setNewStockAutoRenew(e.target.checked)}
-                    className="rounded text-[#FFB4A2]"
-                  />
-                  <span>แอพนี้เปิดระบบต่ออายุอัตโนมัติ (Auto-Renew)</span>
-                </label>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={newStockLoading}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
-                >
-                  {newStockLoading ? 'กำลังบันทึก...' : 'บันทึกเข้าสต็อก'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewStockModal(false)}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
-                >
-                  ยกเลิก
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: EDIT PRODUCT */}
-      {editProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs overflow-y-auto">
-          <div className="w-full max-w-lg bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4 my-8">
-            <h3 className="font-extrabold text-base text-[#5D4037]">
-              {editProductModal.isNew ? 'เพิ่มสินค้าใหม่' : `แก้ไขสินค้า: ${editProductModal.name}`}
-            </h3>
-
-            <form onSubmit={handleSaveProduct} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ชื่อสินค้า *</label>
-                <input
-                  type="text"
-                  required
-                  value={prodName}
-                  onChange={(e) => setProdName(e.target.value)}
-                  className="w-full miki-input text-xs font-bold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">ราคา (บาท) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={prodPrice}
-                    onChange={(e) => setProdPrice(parseFloat(e.target.value) || 0)}
-                    className="w-full miki-input text-xs font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">อายุการใช้งาน (วัน) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={prodDuration}
-                    onChange={(e) => setProdDuration(parseInt(e.target.value) || 30)}
-                    className="w-full miki-input text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">หมวดหมู่</label>
-                <select
-                  value={prodCategory}
-                  onChange={(e) => setProdCategory(e.target.value)}
-                  className="w-full miki-input text-xs font-bold"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">รูปภาพสินค้า (URL) *</label>
-                <input
-                  type="url"
-                  required
-                  value={prodImage}
-                  onChange={(e) => setProdImage(e.target.value)}
-                  className="w-full miki-input text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">กฎระเบียบการใช้งาน</label>
-                <textarea
-                  rows={2}
-                  value={prodRules}
-                  onChange={(e) => setProdRules(e.target.value)}
-                  className="w-full miki-input text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">วิธีเข้าใช้งาน (คู่มือ)</label>
-                <textarea
-                  rows={2}
-                  value={prodGuide}
-                  onChange={(e) => setProdGuide(e.target.value)}
-                  className="w-full miki-input text-xs"
-                />
-              </div>
-
-              {/* Cutoff Type Selection */}
-              <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-2">
-                <div className="flex items-center gap-1.5 font-bold text-xs text-[#5D4037]">
-                  <Clock className="w-4 h-4 text-[#D84315]" />
-                  <span>รูปแบบการตัดรอบบัญชี (Cutoff Rule)</span>
-                </div>
-
-                <div className="space-y-1.5 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
-                    <input
-                      type="radio"
-                      name="cutoffType"
-                      value="ROUND_UP_HOUR"
-                      checked={prodCutoffType === 'ROUND_UP_HOUR'}
-                      onChange={(e) => setProdCutoffType(e.target.value)}
-                      className="text-[#E5989B]"
-                    />
-                    <div>
-                      <span className="font-bold text-[#5D4037]">ปัดเศษขึ้นชั่วโมงถัดไป (เช่น 15:23 ปัดเป็น 16:00 น.)</span>
-                      <p className="text-[11px] text-[#8D6E63]">สะดวกต่อการจัดคิวเปลี่ยนรหัสผ่านแอคเคาท์</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
-                    <input
-                      type="radio"
-                      name="cutoffType"
-                      value="MIDNIGHT"
-                      checked={prodCutoffType === 'MIDNIGHT'}
-                      onChange={(e) => setProdCutoffType(e.target.value)}
-                      className="text-[#E5989B]"
-                    />
-                    <div>
-                      <span className="font-bold text-[#5D4037]">ตัดรอบเที่ยงคืน (Midnight Cutoff - 23:59:59 น.)</span>
-                      <p className="text-[11px] text-[#8D6E63]">สำหรับบัญชีเน็ตฟิกหรือแอพที่ตัดตามรอบวันสิ้นสุดเที่ยงคืน</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl hover:bg-white/80 transition-colors">
-                    <input
-                      type="radio"
-                      name="cutoffType"
-                      value="EXACT_TIME"
-                      checked={prodCutoffType === 'EXACT_TIME'}
-                      onChange={(e) => setProdCutoffType(e.target.value)}
-                      className="text-[#E5989B]"
-                    />
-                    <div>
-                      <span className="font-bold text-[#5D4037]">เวลาตรงเป๊ะ (Exact 24 ชั่วโมงต่อวัน)</span>
-                      <p className="text-[11px] text-[#8D6E63]">นับตามเวลาสั่งซื้อตรงตัว</p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* OTP Options */}
-              <div className="p-3 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] space-y-2">
-                <label className="flex items-center gap-2 text-xs font-bold text-[#5D4037]">
-                  <input
-                    type="checkbox"
-                    checked={prodOtp}
-                    onChange={(e) => setProdOtp(e.target.checked)}
-                    className="rounded text-[#FFB4A2]"
-                  />
-                  <span>เปิดใช้งานปุ่มขอรหัส OTP ผ่าน LINE Official Account</span>
-                </label>
-
-                {prodOtp && (
-                  <div className="space-y-1 pt-1">
-                    <label className="text-[11px] font-bold text-[#8D6E63]">ลิงก์ LINE Official Account</label>
-                    <input
-                      type="url"
-                      value={prodLineOa}
-                      onChange={(e) => setProdLineOa(e.target.value)}
-                      placeholder="https://line.me/R/ti/p/@miki.store"
-                      className="w-full miki-input text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={prodLoading}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
-                >
-                  {prodLoading ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditProductModal(null)}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
-                >
-                  ยกเลิก
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: EDIT STOCK BILLING & SUBSCRIPTION */}
-      {editBillingStock && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
-            <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#FFB4A2]" />
-              <span>แก้ไขรอบบิลและช่องทางตัดเงิน</span>
-            </h3>
-            <p className="text-xs text-[#8D6E63]">
-              บัญชี: <span className="font-bold text-[#5D4037]">{editBillingStock.email}</span> ({editBillingStock.productName})
-            </p>
-
-            <form onSubmit={handleUpdateStockBilling} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-[#8D6E63]">วันที่เริ่มสมัครแอพ</label>
-                  <input
-                    type="date"
-                    value={editRegisteredAt}
-                    onChange={(e) => setEditRegisteredAt(e.target.value)}
-                    className="w-full miki-input text-xs font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-[#8D6E63]">วันที่แอพตัดเงินรอบถัดไป</label>
-                  <input
-                    type="date"
-                    value={editBillingDate}
-                    onChange={(e) => setEditBillingDate(e.target.value)}
-                    className="w-full miki-input text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-[#8D6E63]">ช่องทางที่แอพตัดเงิน</label>
-                <div className="flex gap-2">
-                  <select
-                    value={
-                      ['TrueMoney Wallet', 'บัตรเดบิต KBank', 'บัตรเดบิต SCB', 'บัตรเครดิต', 'AIS Billing'].includes(
-                        editPaymentMethod
-                      )
-                        ? editPaymentMethod
-                        : 'CUSTOM'
+                      ? editPaymentMethod
+                      : 'CUSTOM'
                     }
                     onChange={(e) => {
                       if (e.target.value !== 'CUSTOM') setEditPaymentMethod(e.target.value);
@@ -2132,187 +2510,392 @@ export function AdminClient({
             </form>
           </div>
         </div>
+      </div>
       )}
 
       {/* MODAL: ADD / EDIT BANK ACCOUNT */}
       {bankModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
-            <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
-              <Building className="w-5 h-5 text-[#FFB4A2]" />
-              <span>{bankModal.isNew ? 'เพิ่มบัญชีธนาคารใหม่' : `แก้ไขบัญชี: ${bankModal.bankName}`}</span>
-            </h3>
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Building className="w-5 h-5 text-[#FFB4A2]" />
+                <span>{bankModal.isNew ? 'เพิ่มบัญชีธนาคารใหม่' : `แก้ไขบัญชี: ${bankModal.bankName}`}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setBankModal(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleSaveBankAccount} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ชื่อธนาคาร / ช่องทาง *</label>
-                <input
-                  type="text"
-                  required
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                  placeholder="เช่น ธนาคารกสิกรไทย, ธนาคารไทยพาณิชย์, พร้อมเพย์, TrueMoney Wallet"
-                  className="w-full miki-input text-xs font-bold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ชื่อบัญชี *</label>
-                <input
-                  type="text"
-                  required
-                  value={bankAccountName}
-                  onChange={(e) => setBankAccountName(e.target.value)}
-                  placeholder="เช่น มิคิ สโตร์"
-                  className="w-full miki-input text-xs font-bold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">เลขที่บัญชี *</label>
-                <input
-                  type="text"
-                  required
-                  value={bankAccountNumber}
-                  onChange={(e) => setBankAccountNumber(e.target.value)}
-                  placeholder="เช่น 123-4-56789-0"
-                  className="w-full miki-input text-xs font-mono font-bold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">เบอร์พร้อมเพย์ / วอลเล็ท (สแกนจ่ายได้จริง)</label>
-                <input
-                  type="text"
-                  value={bankPromptPay}
-                  onChange={(e) => setBankPromptPay(e.target.value)}
-                  placeholder="เช่น 0899999999 หรือ เลขบัตรประชาชน"
-                  className="w-full miki-input text-xs font-mono font-bold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ลิงก์รูปภาพ QR Code (ถ้ามี)</label>
-                <input
-                  type="url"
-                  value={bankQrUrl}
-                  onChange={(e) => setBankQrUrl(e.target.value)}
-                  placeholder="https://... (URL รูปภาพ QR บัญชีธนาคาร)"
-                  className="w-full miki-input text-xs"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-1 text-xs">
-                <label className="flex items-center gap-2 font-bold text-[#5D4037] cursor-pointer">
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <form onSubmit={handleSaveBankAccount} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ชื่อธนาคาร / ช่องทาง *</label>
                   <input
-                    type="checkbox"
-                    checked={bankIsActive}
-                    onChange={(e) => setBankIsActive(e.target.checked)}
-                    className="rounded text-[#FFB4A2]"
+                    type="text"
+                    required
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    placeholder="เช่น ธนาคารกสิกรไทย, ธนาคารไทยพาณิชย์, พร้อมเพย์, TrueMoney Wallet"
+                    className="w-full miki-input text-xs font-bold"
                   />
-                  <span>เปิดใช้งานให้ลูกค้าเห็นในหน้าเติมเงิน</span>
-                </label>
-              </div>
+                </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={bankLoading}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
-                >
-                  {bankLoading ? 'กำลังบันทึก...' : 'บันทึกบัญชี'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBankModal(null)}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
-                >
-                  ยกเลิก
-                </button>
-              </div>
-            </form>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ชื่อบัญชี *</label>
+                  <input
+                    type="text"
+                    required
+                    value={bankAccountName}
+                    onChange={(e) => setBankAccountName(e.target.value)}
+                    placeholder="เช่น มิคิ สโตร์"
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">เลขที่บัญชี *</label>
+                  <input
+                    type="text"
+                    required
+                    value={bankAccountNumber}
+                    onChange={(e) => setBankAccountNumber(e.target.value)}
+                    placeholder="เช่น 123-4-56789-0"
+                    className="w-full miki-input text-xs font-mono font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">เบอร์พร้อมเพย์ / วอลเล็ท (สแกนจ่ายได้จริง)</label>
+                  <input
+                    type="text"
+                    value={bankPromptPay}
+                    onChange={(e) => setBankPromptPay(e.target.value)}
+                    placeholder="เช่น 0899999999 หรือ เลขบัตรประชาชน"
+                    className="w-full miki-input text-xs font-mono font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ลิงก์รูปภาพ QR Code (ถ้ามี)</label>
+                  <input
+                    type="url"
+                    value={bankQrUrl}
+                    onChange={(e) => setBankQrUrl(e.target.value)}
+                    placeholder="https://... (URL รูปภาพ QR บัญชีธนาคาร)"
+                    className="w-full miki-input text-xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <label className="flex items-center gap-2 font-bold text-[#5D4037] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bankIsActive}
+                      onChange={(e) => setBankIsActive(e.target.checked)}
+                      className="rounded text-[#FFB4A2]"
+                    />
+                    <span>เปิดใช้งานให้ลูกค้าเห็นในหน้าเติมเงิน</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={bankLoading}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
+                  >
+                    {bankLoading ? 'กำลังบันทึก...' : 'บันทึกบัญชี'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBankModal(null)}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
       {/* MODAL: ADD / EDIT STORE CONTACT */}
       {contactModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/30 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-[0_16px_40px_rgba(141,110,99,0.25)] p-6 space-y-4">
-            <h3 className="font-extrabold text-base text-[#5D4037]">
-              {contactModal.isNew ? 'เพิ่มช่องทางติดต่อใหม่' : `แก้ไข: ${contactModal.title}`}
-            </h3>
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037]">
+                {contactModal.isNew ? 'เพิ่มช่องทางติดต่อใหม่' : `แก้ไข: ${contactModal.title}`}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setContactModal(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-            <form onSubmit={handleSaveStoreContact} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ชื่อช่องทาง *</label>
-                <input
-                  type="text"
-                  required
-                  value={contactTitle}
-                  onChange={(e) => setContactTitle(e.target.value)}
-                  placeholder="เช่น LINE Official, Facebook, Instagram, TikTok, Discord"
-                  className="w-full miki-input text-xs font-bold"
-                />
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <form onSubmit={handleSaveStoreContact} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ชื่อช่องทาง *</label>
+                  <input
+                    type="text"
+                    required
+                    value={contactTitle}
+                    onChange={(e) => setContactTitle(e.target.value)}
+                    placeholder="เช่น LINE Official, Facebook, Instagram, TikTok, Discord"
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ลิงก์ปลายทาง (URL) *</label>
+                  <input
+                    type="url"
+                    required
+                    value={contactUrl}
+                    onChange={(e) => setContactUrl(e.target.value)}
+                    placeholder="เช่น https://line.me/R/ti/p/@miki หรือ https://facebook.com/..."
+                    className="w-full miki-input text-xs"
+                  />
+                  <p className="text-[10px] text-[#8D6E63]">เมื่อลูกค้าคลิกจะเปิดไปยังหน้านี้ในแท็บใหม่</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ข้อความแสดง (Handle / ID) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={contactHandle}
+                    onChange={(e) => setContactHandle(e.target.value)}
+                    placeholder="เช่น @mikistore หรือ miki.bakery"
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ไอคอน</label>
+                  <select
+                    value={contactIcon}
+                    onChange={(e) => setContactIcon(e.target.value)}
+                    className="w-full miki-input text-xs font-bold"
+                  >
+                    <option value="MessageCircle">LINE / แชท (MessageCircle)</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="Music2">TikTok</option>
+                    <option value="Send">Telegram / ข้อความ</option>
+                    <option value="Phone">เบอร์โทรศัพท์</option>
+                    <option value="Mail">อีเมล</option>
+                    <option value="Globe">เว็บไซต์ (Globe)</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={contactLoading}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
+                  >
+                    {contactLoading ? 'กำลังบันทึก...' : 'บันทึกช่องทางติดต่อ'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContactModal(null)}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT SLOTS & PINS FOR EXISTING STOCK */}
+      {editSlotsStock && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-xl bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Key className="w-5 h-5 text-[#FFB4A2]" />
+                <span>แก้ไขชื่อจอ, PIN, และประเภทอุปกรณ์</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditSlotsStock(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditSlots} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE]">
+                  <div className="text-xs text-[#8D6E63]">
+                    บัญชี: <span className="font-bold text-[#5D4037]">{editSlotsStock.email}</span>
+                    <span className="ml-1 text-[11px] text-[#A0887E]">({editSlotsStock.productName})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditSlotsData((prev) =>
+                        prev.map((slot, idx) => ({
+                          ...slot,
+                          slotName:
+                            idx === 3 ? 'จอ 4 (ทีวี/TV)' : `จอ ${idx + 1} (มือถือ/แท็บเล็ต)`,
+                          deviceType: idx === 3 ? 'TV' : 'MOBILE',
+                        }))
+                      );
+                    }}
+                    className="px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFF0EB] shadow-2xs flex items-center gap-1 active:scale-95 transition-all"
+                  >
+                    <Tv className="w-3 h-3" />
+                    <span>ใช้พรีเซ็ต Netflix (จอ 1-3 มือถือ + จอ 4 ทีวี)</span>
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {editSlotsData.map((slot, idx) => (
+                    <div
+                      key={slot.id}
+                      className="p-3.5 rounded-2xl bg-white border border-[#E8DCCF] shadow-2xs space-y-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-[#FFF0EB] text-[#E5989B] flex items-center justify-center text-[11px] font-extrabold">
+                            {idx + 1}
+                          </span>
+                          <span className="text-[#5D4037]">จอที่ {idx + 1}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Device Type */}
+                          <select
+                            value={slot.deviceType || 'MOBILE'}
+                            onChange={(e) => {
+                              const updated = [...editSlotsData];
+                              updated[idx].deviceType = e.target.value;
+                              setEditSlotsData(updated);
+                            }}
+                            className="text-[11px] font-bold py-1 px-2.5 rounded-lg border border-[#FFD9CE] bg-[#FFF8F3] text-[#6D4C41]"
+                          >
+                            <option value="MOBILE">มือถือ/แท็บเล็ต (Mobile)</option>
+                            <option value="TV">สมาร์ททีวี (Smart TV)</option>
+                            <option value="ALL">ทุกอุปกรณ์ (All Devices)</option>
+                          </select>
+
+                          {/* Status Selector */}
+                          <select
+                            value={slot.status || 'AVAILABLE'}
+                            onChange={(e) => {
+                              const updated = [...editSlotsData];
+                              updated[idx].status = e.target.value;
+                              setEditSlotsData(updated);
+                            }}
+                            className={`text-[11px] font-bold py-1 px-2.5 rounded-lg border transition-all ${
+                              slot.status === 'AVAILABLE'
+                                ? 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
+                                : slot.status === 'ASSIGNED'
+                                ? 'bg-[#FFF8F3] text-[#D97706] border-[#FDE68A]'
+                                : 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
+                            }`}
+                          >
+                            <option value="AVAILABLE">พร้อมขาย (Available)</option>
+                            <option value="LOCKED">ล็อกไว้ / ไม่ขาย (Locked)</option>
+                            <option value="ASSIGNED">มีคนซื้อแล้ว (Assigned)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-[#8D6E63]">ชื่อจอ / โปรไฟล์ *</label>
+                          <input
+                            type="text"
+                            required
+                            value={slot.slotName}
+                            onChange={(e) => {
+                              const updated = [...editSlotsData];
+                              updated[idx].slotName = e.target.value;
+                              setEditSlotsData(updated);
+                            }}
+                            placeholder="เช่น จอ 1 (มือถือ) หรือ Profile 1"
+                            className="w-full miki-input text-xs font-bold"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-[#8D6E63]">รหัส PIN ประจำจอ</label>
+                          <input
+                            type="text"
+                            value={slot.slotPin}
+                            onChange={(e) => {
+                              const updated = [...editSlotsData];
+                              updated[idx].slotPin = e.target.value;
+                              setEditSlotsData(updated);
+                            }}
+                            placeholder="เช่น 1234 หรือเว้นว่าง"
+                            className="w-full miki-input text-xs font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Product Mapping Dropdown */}
+                      <div className="space-y-1 pt-0.5">
+                        <label className="text-[10px] font-bold text-[#8D6E63]">
+                          สินค้าที่ผูกกับจอนี้ (เลือกเมื่อต้องการแยกขายข้ามแพ็กเกจ เช่น แยกขายเฉพาะจอทีวี)
+                        </label>
+                        <select
+                          value={slot.productId || ''}
+                          onChange={(e) => {
+                            const updated = [...editSlotsData];
+                            updated[idx].productId = e.target.value;
+                            setEditSlotsData(updated);
+                          }}
+                          className="w-full miki-input text-[11px] font-medium"
+                        >
+                          <option value="">ตามสินค้าหลักของบัญชีนี้ ({editSlotsStock.productName})</option>
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.price} ฿)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ลิงก์ปลายทาง (URL) *</label>
-                <input
-                  type="url"
-                  required
-                  value={contactUrl}
-                  onChange={(e) => setContactUrl(e.target.value)}
-                  placeholder="เช่น https://line.me/R/ti/p/@miki หรือ https://facebook.com/..."
-                  className="w-full miki-input text-xs"
-                />
-                <p className="text-[10px] text-[#8D6E63]">เมื่อลูกค้าคลิกจะเปิดไปยังหน้านี้ในแท็บใหม่</p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ข้อความแสดง (Handle / ID) *</label>
-                <input
-                  type="text"
-                  required
-                  value={contactHandle}
-                  onChange={(e) => setContactHandle(e.target.value)}
-                  placeholder="เช่น @mikistore หรือ miki.bakery"
-                  className="w-full miki-input text-xs font-bold"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#5D4037]">ไอคอน</label>
-                <select
-                  value={contactIcon}
-                  onChange={(e) => setContactIcon(e.target.value)}
-                  className="w-full miki-input text-xs font-bold"
-                >
-                  <option value="MessageCircle">LINE / แชท (MessageCircle)</option>
-                  <option value="Facebook">Facebook</option>
-                  <option value="Instagram">Instagram</option>
-                  <option value="Music2">TikTok</option>
-                  <option value="Send">Telegram / ข้อความ</option>
-                  <option value="Phone">เบอร์โทรศัพท์</option>
-                  <option value="Mail">อีเมล</option>
-                  <option value="Globe">เว็บไซต์ (Globe)</option>
-                </select>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={contactLoading}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B]"
-                >
-                  {contactLoading ? 'กำลังบันทึก...' : 'บันทึกช่องทางติดต่อ'}
-                </button>
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 bg-[#FAF7F2] border-t border-[#F5EBE1] flex justify-end gap-2 flex-shrink-0 sticky bottom-0 z-10">
                 <button
                   type="button"
-                  onClick={() => setContactModal(null)}
-                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE]"
+                  onClick={() => setEditSlotsStock(null)}
+                  className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
                 >
                   ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSlotsLoading}
+                  className="px-6 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
+                >
+                  {editSlotsLoading ? 'กำลังบันทึก...' : 'บันทึกการแก้ไขข้อมูลจอ'}
                 </button>
               </div>
             </form>
