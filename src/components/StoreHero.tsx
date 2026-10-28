@@ -152,11 +152,12 @@ export function StoreHero({ storeSetting, contacts = [] }: StoreHeroProps) {
                 className="h-32 sm:h-36 md:h-40 object-contain drop-shadow-[0_8px_16px_rgba(141,110,99,0.15)] transition-transform duration-300 hover:scale-105 select-none"
               />
             ) : (
-              <div className="relative flex flex-col items-center group">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-                  <ShokupanIcon className="w-20 h-20 sm:w-24 sm:h-24 drop-shadow-md" />
-                </div>
-              </div>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src="/mascot_bunny_wiggle.gif"
+                alt="Store Mascot"
+                className="h-32 sm:h-36 md:h-40 object-contain drop-shadow-[0_8px_16px_rgba(141,110,99,0.15)] transition-transform duration-300 hover:scale-105 select-none"
+              />
             )}
             <div className="w-16 sm:w-20 h-2 rounded-full bg-[#5D4037]/10 blur-[2px] mt-0.5" />
           </div>

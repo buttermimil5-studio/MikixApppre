@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { SoundEffectProvider } from "@/components/SoundEffectProvider";
 import { BakeryMusicPlayer } from "@/components/BakeryMusicPlayer";
+import InteractiveMascot from "@/components/InteractiveMascot";
 
 export const metadata: Metadata = {
   title: "Miki App Store - เว็บกดของแอพพรี สำหรับลูกค้าและตัวแทน",
@@ -18,6 +19,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans bg-[#FFFDF8] text-[#5C3D2E] pb-24">
         <SoundEffectProvider />
         {children}
+        <InteractiveMascot />
         <BakeryMusicPlayer />
       </body>
     </html>
