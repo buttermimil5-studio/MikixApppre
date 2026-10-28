@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, RefreshCw, X, ChevronUp, Heart } from 'lucide-react';
+import { Sparkles, X, ChevronUp, Heart } from 'lucide-react';
 import { playBubblePop } from '@/lib/soundEffects';
 
 interface Particle {
@@ -24,7 +24,6 @@ const CUTE_MESSAGES = [
 ];
 
 export default function InteractiveMascot() {
-  const [character, setCharacter] = useState<'bunny' | 'bear'>('bunny');
   const [col, setCol] = useState(2); // 0..4 (2 is center)
   const [row, setRow] = useState(2); // 0..4 (2 is center)
   const [isSpinning, setIsSpinning] = useState(false);
@@ -41,10 +40,6 @@ export default function InteractiveMascot() {
   // Load preferences from localStorage
   useEffect(() => {
     try {
-      const savedChar = localStorage.getItem('miki_mascot_char');
-      if (savedChar === 'bunny' || savedChar === 'bear') {
-        setCharacter(savedChar);
-      }
       const savedMin = localStorage.getItem('miki_mascot_minimized');
       if (savedMin === 'true') {
         setIsMinimized(true);
@@ -177,18 +172,6 @@ export default function InteractiveMascot() {
     }, 4500);
   }, [isSpinning]);
 
-  // Toggle Character
-  const toggleCharacter = () => {
-    playBubblePop();
-    const next = character === 'bunny' ? 'bear' : 'bunny';
-    setCharacter(next);
-    try {
-      localStorage.setItem('miki_mascot_char', next);
-    } catch {
-      // Ignore
-    }
-  };
-
   // Toggle Minimized
   const toggleMinimize = (min: boolean) => {
     playBubblePop();
@@ -200,18 +183,16 @@ export default function InteractiveMascot() {
     }
   };
 
-  const spriteUrl = character === 'bunny' ? '/mascot_bunny_sprites.png' : '/mascot_bear_sprites.png';
-
   if (isMinimized) {
     return (
       <div className="fixed bottom-4 left-4 z-40">
         <button
           onClick={() => toggleMinimize(false)}
           className="flex items-center gap-2 px-3.5 py-2 bg-[#5D4037] text-[#FDFBF7] rounded-full shadow-lg hover:bg-[#4E342E] transition-all hover:scale-105 border border-[#8D6E63]/30 text-xs font-medium cursor-pointer"
-          title="เปิดมาสคอตดุ๊กดิ๊ก"
+          title="เปิดน้องกระต่ายดุ๊กดิ๊ก"
         >
           <Sparkles className="w-3.5 h-3.5 text-[#FFB4A2] animate-pulse" />
-          <span>น้องมาสคอต</span>
+          <span>น้องกระต่าย</span>
           <ChevronUp className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -233,20 +214,12 @@ export default function InteractiveMascot() {
         </div>
       )}
 
-      {/* Control Buttons (visible on hover) */}
+      {/* Control Button (Close/Minimize on hover) */}
       <div
-        className={`flex items-center gap-1.5 mb-1.5 transition-all duration-200 ${
+        className={`flex items-center gap-1.5 mb-1 transition-all duration-200 ${
           showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'
         }`}
       >
-        <button
-          onClick={toggleCharacter}
-          className="px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full text-[11px] font-medium text-[#5D4037] shadow-sm border border-[#5D4037]/10 hover:bg-[#FFB4A2]/20 flex items-center gap-1 cursor-pointer transition-colors"
-          title="สลับตัวละคร"
-        >
-          <RefreshCw className="w-3 h-3 text-[#B5838D]" />
-          <span>{character === 'bunny' ? 'น้องหมี' : 'น้องกระต่าย'}</span>
-        </button>
         <button
           onClick={() => toggleMinimize(true)}
           className="p-1 bg-white/90 backdrop-blur-sm rounded-full text-[#5D4037]/70 hover:text-[#5D4037] shadow-sm border border-[#5D4037]/10 hover:bg-gray-100 cursor-pointer transition-colors"
@@ -280,19 +253,19 @@ export default function InteractiveMascot() {
           className={`relative cursor-pointer transition-transform duration-150 ${
             isBouncing ? '-translate-y-3 scale-110' : 'hover:scale-105 active:scale-95'
           }`}
-          style={{ width: '92px', height: '92px' }}
+          style={{ width: '84px', height: '84px' }}
         >
           {/* Subtle soft shadow under mascot */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-14 h-3 bg-[#5D4037]/10 rounded-full blur-[2px]" />
+          <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-12 h-2.5 bg-[#5D4037]/10 rounded-full blur-[2px]" />
 
-          {/* Sprite frame */}
+          {/* Sprite frame (Retina 800x800 atlas scaled down to 420x420, 84px per cell) */}
           <div
             style={{
-              width: '92px',
-              height: '92px',
-              backgroundImage: `url(${spriteUrl})`,
-              backgroundSize: '460px 460px', // 5 * 92px = 460px
-              backgroundPosition: `-${col * 92}px -${row * 92}px`,
+              width: '84px',
+              height: '84px',
+              backgroundImage: 'url(/mascot_bunny_sprites.png)',
+              backgroundSize: '420px 420px',
+              backgroundPosition: `-${col * 84}px -${row * 84}px`,
               imageRendering: 'auto',
             }}
           />
