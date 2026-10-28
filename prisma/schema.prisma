@@ -1,0 +1,157 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String             @id @default(cuid())
+  username       String             @unique
+  passwordHash   String
+  role           String             @default("AGENT") // ADMIN, AGENT, CUSTOMER
+  creditBalance  Float              @default(0.0)
+  profileName    String             @default("ตัวแทนพรีเมียม")
+  salesChannel   String?            // เช่น IG: @miki.store, LINE: @miki
+  avatarUrl      String?
+  frameTheme     String             @default("BUNNY") // BUNNY, BEAR, DEFAULT
+  frameAccessory String             @default("BOW")   // BOW, CREAM, CHERRY, NONE
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  orders         Order[]
+  topups         TopupTransaction[]
+  auditLogs      AuditLog[]
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  iconName  String    @default("Film")
+  sortOrder Int       @default(0)
+  products  Product[]
+  createdAt DateTime  @default(now())
+}
+
+model Product {
+  id           String         @id @default(cuid())
+  categoryId   String
+  category     Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name         String
+  imageUrl     String
+  price        Float
+  durationDays Int            @default(30)
+  rules        String
+  usageGuide   String
+  otpEnabled   Boolean        @default(false)
+  lineOaUrl    String?
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  accountStocks AccountStock[]
+  orders        Order[]
+}
+
+model AccountStock {
+  id                String               @id @default(cuid())
+  productId         String
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  encryptedEmail    String
+  encryptedPassword String
+  iv                String
+  tag               String
+  passwordIv        String?
+  passwordTag       String?
+  notes             String?
+  totalSlots        Int                  @default(1)
+  status            String               @default("ACTIVE") // ACTIVE, FULL, SERVICING
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  profileSlots      AccountProfileSlot[]
+}
+
+model AccountProfileSlot {
+  id             String       @id @default(cuid())
+  accountStockId String
+  accountStock   AccountStock @relation(fields: [accountStockId], references: [id], onDelete: Cascade)
+  slotName       String       @default("จอ 1")
+  slotPin        String?
+  status         String       @default("AVAILABLE") // AVAILABLE, ASSIGNED, EXPIRED, LOCKED
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  order          Order?
+}
+
+model Order {
+  id             String             @id @default(cuid())
+  orderNumber    String             @unique
+  userId         String
+  user           User               @relation(fields: [userId], references: [id])
+  productId      String
+  product        Product            @relation(fields: [productId], references: [id])
+  profileSlotId  String             @unique
+  profileSlot    AccountProfileSlot @relation(fields: [profileSlotId], references: [id])
+  amountPaid     Float
+  purchasedAt    DateTime           @default(now())
+  expiresAt      DateTime
+  status         String             @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  otpRequestedAt DateTime?
+  otpCount       Int                @default(0)
+}
+
+model TopupTransaction {
+  id           String    @id @default(cuid())
+  txNumber     String    @unique
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  amount       Float
+  slipUrl      String?
+  transRef     String?   @unique
+  status       String    @default("PENDING") // SUCCESS, PENDING, REJECTED
+  verifiedBy   String    @default("SLIP2GO") // SLIP2GO, ADMIN_MANUAL
+  slip2goRaw   String?
+  adminNote    String?
+  createdAt    DateTime  @default(now())
+  verifiedAt   DateTime?
+}
+
+model StoreSetting {
+  id               String   @id @default("default")
+  storeName        String   @default("Miki App Store")
+  storeTag         String   @default("森のベーカリー")
+  storeSubtitle    String   @default("แอปพรีเมียมราคาส่ง จัดส่งอัตโนมัติ 24 ชม. เสิร์ฟความคุ้มค่าหอมกรุ่นเหมือนขนมปังอบใหม่")
+  bannerUrl        String?
+  logoUrl          String?
+  mascotUrl        String?
+  mascotGreeting   String   @default("ยินดีต้อนรับสู่ Miki App Store นะคะ! มีแอปพรีเมียมพร้อมส่ง 24 ชม. ทักหาแอดมินได้ตลอดเลยน้า~")
+  announcementNote String   @default("ยินดีต้อนรับสู่ร้านแอปพรีเมียม! ระบบส่งรหัสไวใน 1 นาที หากพบปัญหาสามารถติดต่อแอดมินได้ตลอดเวลา")
+  contactLine      String   @default("@mikistore")
+  contactFacebook  String?
+  contactInstagram String?
+  isOpen           Boolean  @default(true)
+  closedNotice     String   @default("ร้านปิดปรับปรุงชั่วคราว จะเปิดให้บริการเร็วๆ นี้")
+  bankName         String   @default("ธนาคารกสิกรไทย")
+  bankAccountName  String   @default("มิคิ สโตร์")
+  bankAccountNumber String  @default("000-0-00000-0")
+  promptPayNumber  String   @default("0899999999")
+  bankQrUrl        String?
+  slip2goApiKey    String?
+  slip2goSecretKey String?
+  updatedAt        DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   String
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
