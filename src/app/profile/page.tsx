@@ -7,14 +7,16 @@ import { ProfileClient } from './ProfileClient';
 
 
 export default async function ProfilePage() {
-  const user = await getCurrentUser();
+  const [user, storeSetting] = await Promise.all([
+    getCurrentUser(),
+    prisma.storeSetting.findUnique({
+      where: { id: 'default' },
+    }),
+  ]);
+
   if (!user) {
     redirect('/login?redirect=/profile');
   }
-
-  const storeSetting = await prisma.storeSetting.findUnique({
-    where: { id: 'default' },
-  });
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col">

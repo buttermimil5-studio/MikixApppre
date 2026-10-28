@@ -7,49 +7,62 @@ import { ProductCatalog } from '@/components/ProductCatalog';
 import { ShokupanIcon } from '@/components/BakeryLineIcons';
 
 
-export default async function HomePage() {
-  const user = await getCurrentUser();
+import { unstable_cache } from 'next/cache';
 
-  // Fetch store settings
-  let storeSetting = await prisma.storeSetting.findUnique({
-    where: { id: 'default' },
-  });
-
-  if (!storeSetting) {
-    storeSetting = await prisma.storeSetting.create({
-      data: {
-        id: 'default',
-        storeName: 'Miki App Store',
-      },
+const getCachedStoreData = unstable_cache(
+  async () => {
+    let storeSetting = await prisma.storeSetting.findUnique({
+      where: { id: 'default' },
     });
-  }
 
-  // Fetch categories
-  const categories = await prisma.category.findMany({
-    orderBy: { sortOrder: 'asc' },
-  });
+    if (!storeSetting) {
+      storeSetting = await prisma.storeSetting.create({
+        data: {
+          id: 'default',
+          storeName: 'Miki App Store',
+        },
+      });
+    }
 
-  // Fetch dynamic store contacts
-  const contacts = await prisma.storeContact.findMany({
-    orderBy: { sortOrder: 'asc' },
-  });
-
-  // Fetch active products with available slots count
-  const rawProducts = await prisma.product.findMany({
-    where: { isActive: true },
-    include: {
-      category: true,
-      accountStocks: {
-        where: { status: { in: ['ACTIVE', 'FULL'] } },
+    const [categories, contacts, rawProducts] = await Promise.all([
+      prisma.category.findMany({
+        orderBy: { sortOrder: 'asc' },
+      }),
+      prisma.storeContact.findMany({
+        orderBy: { sortOrder: 'asc' },
+      }),
+      prisma.product.findMany({
+        where: { isActive: true },
         include: {
-          profileSlots: {
-            where: { status: 'AVAILABLE' },
+          category: true,
+          accountStocks: {
+            where: { status: { in: ['ACTIVE', 'FULL'] } },
+            select: {
+              id: true,
+              profileSlots: {
+                where: { status: 'AVAILABLE' },
+                select: { id: true },
+              },
+            },
           },
         },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    return { storeSetting, categories, contacts, rawProducts };
+  },
+  ['home_store_catalog'],
+  { revalidate: 30, tags: ['store_data', 'products'] }
+);
+
+export default async function HomePage() {
+  const [user, storeData] = await Promise.all([
+    getCurrentUser(),
+    getCachedStoreData(),
+  ]);
+
+  const { storeSetting, categories, contacts, rawProducts } = storeData;
 
   const products = rawProducts.map((p) => {
     // Count available slots across all active account stocks for this product

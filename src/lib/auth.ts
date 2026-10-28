@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import prisma from './prisma';
 
 const JWT_SECRET = new TextEncoder().encode(
@@ -46,7 +47,7 @@ export async function verifySessionToken(token: string): Promise<UserSession | n
   }
 }
 
-export async function getCurrentUser() {
+export const getCurrentUser = cache(async () => {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;
@@ -75,6 +76,6 @@ export async function getCurrentUser() {
     console.error('Error getting current user:', error);
     return null;
   }
-}
+});
 
 export { COOKIE_NAME };

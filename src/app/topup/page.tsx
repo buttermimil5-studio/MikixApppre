@@ -12,20 +12,20 @@ export default async function TopupPage() {
     redirect('/login?redirect=/topup');
   }
 
-  const storeSetting = await prisma.storeSetting.findUnique({
-    where: { id: 'default' },
-  });
-
-  const bankAccounts = await prisma.bankAccount.findMany({
-    where: { isActive: true },
-    orderBy: { sortOrder: 'asc' },
-  });
-
-  const recentTopups = await prisma.topupTransaction.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: 'desc' },
-    take: 10,
-  });
+  const [storeSetting, bankAccounts, recentTopups] = await Promise.all([
+    prisma.storeSetting.findUnique({
+      where: { id: 'default' },
+    }),
+    prisma.bankAccount.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+    prisma.topupTransaction.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }),
+  ]);
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col">

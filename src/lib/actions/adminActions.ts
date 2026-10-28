@@ -26,69 +26,76 @@ export async function getAdminDashboardStats() {
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfYear = new Date(now.getFullYear(), 0, 1);
-
-  // Daily sales
-  const dailySales = await prisma.order.aggregate({
-    _sum: { amountPaid: true },
-    _count: { id: true },
-    where: { purchasedAt: { gte: startOfDay } },
-  });
-
-  // Monthly sales
-  const monthlySales = await prisma.order.aggregate({
-    _sum: { amountPaid: true },
-    _count: { id: true },
-    where: { purchasedAt: { gte: startOfMonth } },
-  });
-
-  // Yearly sales
-  const yearlySales = await prisma.order.aggregate({
-    _sum: { amountPaid: true },
-    _count: { id: true },
-    where: { purchasedAt: { gte: startOfYear } },
-  });
-
-  // Total Topup
-  const totalTopup = await prisma.topupTransaction.aggregate({
-    _sum: { amount: true },
-    where: { status: 'SUCCESS' },
-  });
-
-  // Active & Expiring soon subscriptions
   const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const activeOrdersCount = await prisma.order.count({
-    where: { status: 'ACTIVE' },
-  });
 
-  const expiringSoonCount = await prisma.order.count({
-    where: {
-      status: 'ACTIVE',
-      expiresAt: { lte: in24Hours, gte: now },
-    },
-  });
-
-  const expiredCount = await prisma.order.count({
-    where: { status: 'EXPIRED' },
-  });
-
-  const servicingStockCount = await prisma.accountStock.count({
-    where: { status: 'SERVICING' },
-  });
-
-  // Bestsellers
-  const products = await prisma.product.findMany({
-    include: {
-      _count: {
-        select: { orders: true },
+  const [
+    dailySales,
+    monthlySales,
+    yearlySales,
+    totalTopup,
+    activeOrdersCount,
+    expiringSoonCount,
+    expiredCount,
+    servicingStockCount,
+    products,
+  ] = await Promise.all([
+    // Daily sales
+    prisma.order.aggregate({
+      _sum: { amountPaid: true },
+      _count: { id: true },
+      where: { purchasedAt: { gte: startOfDay } },
+    }),
+    // Monthly sales
+    prisma.order.aggregate({
+      _sum: { amountPaid: true },
+      _count: { id: true },
+      where: { purchasedAt: { gte: startOfMonth } },
+    }),
+    // Yearly sales
+    prisma.order.aggregate({
+      _sum: { amountPaid: true },
+      _count: { id: true },
+      where: { purchasedAt: { gte: startOfYear } },
+    }),
+    // Total Topup
+    prisma.topupTransaction.aggregate({
+      _sum: { amount: true },
+      where: { status: 'SUCCESS' },
+    }),
+    // Active orders
+    prisma.order.count({
+      where: { status: 'ACTIVE' },
+    }),
+    // Expiring soon
+    prisma.order.count({
+      where: {
+        status: 'ACTIVE',
+        expiresAt: { lte: in24Hours, gte: now },
       },
-    },
-    orderBy: {
-      orders: {
-        _count: 'desc',
+    }),
+    // Expired
+    prisma.order.count({
+      where: { status: 'EXPIRED' },
+    }),
+    // Servicing stock
+    prisma.accountStock.count({
+      where: { status: 'SERVICING' },
+    }),
+    // Bestsellers
+    prisma.product.findMany({
+      include: {
+        _count: {
+          select: { orders: true },
+        },
       },
-    },
-    take: 5,
-  });
+      orderBy: {
+        orders: {
+          _count: 'desc',
+        },
+      },
+      take: 5,
+    }),
+  ]);
 
   return {
     sales: {

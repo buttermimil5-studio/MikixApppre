@@ -13,11 +13,12 @@ export default async function OrdersPage() {
     redirect('/login?redirect=/orders');
   }
 
-  const storeSetting = await prisma.storeSetting.findUnique({
-    where: { id: 'default' },
-  });
-
-  const ordersRes = await getUserOrdersAction();
+  const [storeSetting, ordersRes] = await Promise.all([
+    prisma.storeSetting.findUnique({
+      where: { id: 'default' },
+    }),
+    getUserOrdersAction(),
+  ]);
   const orders = ordersRes.orders || [];
 
   return (
