@@ -28,6 +28,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedGuides, setExpandedGuides] = useState<{ [id: string]: boolean }>({});
   const [otpLoadingId, setOtpLoadingId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -98,6 +99,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
     return `เหลืออีก ${hours} ชม. ${minutes} นาที`;
   };
 
+  const displayedOrders = filteredOrders.slice(0, visibleCount);
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -149,12 +152,14 @@ export function OrdersClient({ orders }: OrdersClientProps) {
       {/* Orders List */}
       {filteredOrders.length > 0 ? (
         <div className="space-y-4">
-          {filteredOrders.map((order) => {
+          {displayedOrders.map((order) => {
             const isActive = order.status === 'ACTIVE';
             const remaining = getRemainingTimeText(order.expiresAt, order.status);
             const isGuideOpen = !!expandedGuides[order.id];
 
-            return (
+            const displayedOrders = filteredOrders.slice(0, visibleCount);
+
+  return (
               <div
                 key={order.id}
                 className={`miki-card p-5 sm:p-6 bg-white space-y-4 transition-all ${
@@ -444,6 +449,22 @@ export function OrdersClient({ orders }: OrdersClientProps) {
               </div>
             );
           })}
+
+          {/* See More Button */}
+          {filteredOrders.length > displayedOrders.length && (
+            <div className="text-center pt-3 pb-2">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((prev) => prev + 10)}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] hover:border-[#FFB4A2] shadow-xs active:scale-95 transition-all"
+              >
+                <span>ดูประวัติการซื้อเพิ่มเติม (+10 รายการ)</span>
+                <span className="text-[10px] text-[#8D6E63] font-normal">
+                  (แสดง {displayedOrders.length} จากทั้งหมด {filteredOrders.length} รายการ)
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-center py-16 miki-card bg-white p-8 space-y-3 border border-[#E8DCCF]">

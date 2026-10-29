@@ -184,7 +184,7 @@ export async function getAdminStocks() {
       },
     },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: 500,
   });
 
   return stocks.map((s) => {
@@ -778,7 +778,7 @@ export async function getAdminTopupTransactions() {
   return prisma.topupTransaction.findMany({
     include: { user: true },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: 500,
   });
 }
 
@@ -840,7 +840,7 @@ export async function getAdminAuditLogs() {
   return prisma.auditLog.findMany({
     include: { user: true },
     orderBy: { createdAt: 'desc' },
-    take: 100,
+    take: 500,
   });
 }
 

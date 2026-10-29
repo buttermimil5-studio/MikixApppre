@@ -3,6 +3,15 @@
 import React, { useState } from 'react';
 import {
   getAdminDashboardStats,
+  getAdminStocks,
+  getAdminProducts,
+  getAdminUsers,
+  getAdminTopupTransactions,
+  getAdminAuditLogs,
+  getAdminOrders,
+  getBankAccounts,
+  getStoreContacts,
+  getAdminMusicTracks,
   adjustUserCreditAction,
   addStockAccountAction,
   updateStockAccountAction,
@@ -58,17 +67,19 @@ import {
   Pause,
   Volume2,
   Video,
+  Search,
 } from 'lucide-react';
+import { BakeryLoadingModal } from '@/components/BakeryLoadingModal';
 import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
 
 interface AdminClientProps {
   initialStats: any;
-  initialStocks: any[];
-  initialProducts: any[];
-  initialUsers: any[];
-  initialTopups: any[];
+  initialStocks?: any[];
+  initialProducts?: any[];
+  initialUsers?: any[];
+  initialTopups?: any[];
   initialSettings: any;
-  initialAuditLogs: any[];
+  initialAuditLogs?: any[];
   categories: any[];
   initialOrders?: any[];
   initialBankAccounts?: any[];
@@ -78,12 +89,12 @@ interface AdminClientProps {
 
 export function AdminClient({
   initialStats,
-  initialStocks,
-  initialProducts,
-  initialUsers,
-  initialTopups,
+  initialStocks = [],
+  initialProducts = [],
+  initialUsers = [],
+  initialTopups = [],
   initialSettings,
-  initialAuditLogs,
+  initialAuditLogs = [],
   categories,
   initialOrders = [],
   initialBankAccounts = [],
@@ -105,6 +116,91 @@ export function AdminClient({
   const [bankAccounts, setBankAccounts] = useState(initialBankAccounts);
   const [contacts, setContacts] = useState(initialContacts);
   const [musicTracks, setMusicTracks] = useState(initialMusicTracks);
+
+  // Lazy tab loading states
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(
+    () =>
+      new Set([
+        'DASHBOARD',
+        ...(initialStocks.length > 0 ? ['STOCKS'] : []),
+        ...(initialOrders.length > 0 ? ['ORDERS'] : []),
+        ...(initialProducts.length > 0 ? ['PRODUCTS'] : []),
+        ...(initialUsers.length > 0 ? ['USERS'] : []),
+        ...(initialTopups.length > 0 ? ['SLIPS'] : []),
+        ...(initialAuditLogs.length > 0 ? ['LOGS'] : []),
+        ...(initialBankAccounts.length > 0 ? ['BANK_ACCOUNTS'] : []),
+        ...(initialContacts.length > 0 ? ['SETTINGS'] : []),
+        ...(initialMusicTracks.length > 0 ? ['MUSIC'] : []),
+      ])
+  );
+  const [tabLoading, setTabLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('กำลังโหลดข้อมูล...');
+
+  // Search & Pagination states
+  const [stockSearchQuery, setStockSearchQuery] = useState('');
+  const [visibleStocksCount, setVisibleStocksCount] = useState(10);
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState(10);
+  const [visibleUsersCount, setVisibleUsersCount] = useState(10);
+  const [visibleTopupsCount, setVisibleTopupsCount] = useState(10);
+  const [visibleLogsCount, setVisibleLogsCount] = useState(15);
+
+  const handleTabClick = async (tabId: string) => {
+    setActiveTab(tabId as any);
+
+    if (loadedTabs.has(tabId)) {
+      return;
+    }
+
+    setTabLoading(true);
+    try {
+      if (tabId === 'STOCKS') {
+        setLoadingMessage('กำลังโหลดคลังสต็อกบัญชีและสินค้า...');
+        const [stk, prods] = await Promise.all([
+          getAdminStocks(),
+          products.length === 0 ? getAdminProducts() : Promise.resolve(products),
+        ]);
+        setStocks(stk);
+        if (products.length === 0) setProducts(prods);
+      } else if (tabId === 'ORDERS') {
+        setLoadingMessage('กำลังโหลดรายการคำสั่งซื้อและการตัดสต็อก...');
+        const ords = await getAdminOrders();
+        setOrders(ords);
+      } else if (tabId === 'PRODUCTS') {
+        setLoadingMessage('กำลังโหลดรายการสินค้าและหมวดหมู่...');
+        const prods = await getAdminProducts();
+        setProducts(prods);
+      } else if (tabId === 'USERS') {
+        setLoadingMessage('กำลังโหลดรายชื่อสมาชิกและเครดิต...');
+        const usrs = await getAdminUsers();
+        setUsers(usrs);
+      } else if (tabId === 'SLIPS') {
+        setLoadingMessage('กำลังโหลดรายการตรวจสอบสลิป...');
+        const tps = await getAdminTopupTransactions();
+        setTopups(tps);
+      } else if (tabId === 'BANK_ACCOUNTS') {
+        setLoadingMessage('กำลังโหลดบัญชีธนาคาร...');
+        const bks = await getBankAccounts();
+        setBankAccounts(bks);
+      } else if (tabId === 'MUSIC') {
+        setLoadingMessage('กำลังโหลดเพลย์ลิสต์เพลงคาเฟ่...');
+        const msc = await getAdminMusicTracks();
+        setMusicTracks(msc);
+      } else if (tabId === 'SETTINGS') {
+        setLoadingMessage('กำลังโหลดข้อมูลช่องทางติดต่อร้าน...');
+        const cts = await getStoreContacts();
+        setContacts(cts);
+      } else if (tabId === 'LOGS') {
+        setLoadingMessage('กำลังโหลดบันทึกประวัติ Audit Logs...');
+        const lgs = await getAdminAuditLogs();
+        setAuditLogs(lgs);
+      }
+      setLoadedTabs((prev) => new Set(prev).add(tabId));
+    } catch (err) {
+      console.error('Failed to load tab:', err);
+    } finally {
+      setTabLoading(false);
+    }
+  };
 
 
   // Modals & form states
@@ -782,8 +878,31 @@ export function AdminClient({
     }
   };
 
+  const filteredStocks = stocks.filter((stock) => {
+    if (!stockSearchQuery.trim()) return true;
+    const q = stockSearchQuery.trim().toLowerCase();
+    return (
+      stock.email.toLowerCase().includes(q) ||
+      stock.productName.toLowerCase().includes(q) ||
+      (stock.notes && stock.notes.toLowerCase().includes(q)) ||
+      stock.slots.some(
+        (sl: any) =>
+          sl.slotName.toLowerCase().includes(q) ||
+          (sl.assignedUser && sl.assignedUser.toLowerCase().includes(q))
+      )
+    );
+  });
+  const displayedStocks = filteredStocks.slice(0, visibleStocksCount);
+  const displayedOrders = orders.slice(0, visibleOrdersCount);
+  const displayedUsers = users.slice(0, visibleUsersCount);
+  const displayedTopups = topups.slice(0, visibleTopupsCount);
+  const displayedLogs = auditLogs.slice(0, visibleLogsCount);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Minimalist Frosted Loading Modal for On-Demand Tab Fetching */}
+      {tabLoading && <BakeryLoadingModal message={loadingMessage} />}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E8DCCF] pb-4">
         <div>
@@ -805,7 +924,7 @@ export function AdminClient({
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => handleTabClick(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                 isActive
                   ? 'bg-[#FFB4A2] text-white shadow-xs'
@@ -953,7 +1072,7 @@ export function AdminClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8DCCF]/50 font-medium">
-                  {orders.map((ord: any) => (
+                  {displayedOrders.map((ord: any) => (
                     <tr key={ord.id} className="hover:bg-[#FFFDF7] transition-colors">
                       <td className="py-3 font-mono font-bold text-[#5D4037]">{ord.orderNumber}</td>
                       <td className="py-3 font-bold text-[#5D4037]">{ord.productName}</td>
@@ -1011,6 +1130,22 @@ export function AdminClient({
                 <p className="text-xs">เมื่อลูกค้าหรือตัวแทนกดรับบัญชี ข้อมูลการตัดสต็อกจะปรากฏที่นี่</p>
               </div>
             )}
+
+            {/* Pagination See More Button */}
+            {orders.length > displayedOrders.length && (
+              <div className="text-center pt-4 border-t border-[#F5EBE1]">
+                <button
+                  type="button"
+                  onClick={() => setVisibleOrdersCount((prev) => prev + 10)}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] hover:border-[#FFB4A2] shadow-xs active:scale-95 transition-all"
+                >
+                  <span>ดูคำสั่งซื้อเพิ่มเติม (+10 รายการ)</span>
+                  <span className="text-[10px] text-[#8D6E63] font-normal">
+                    (แสดง {displayedOrders.length} จาก {orders.length} รายการ)
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1047,9 +1182,43 @@ export function AdminClient({
             </div>
           )}
 
+          {/* Email & Account Search Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#FFFDF7] p-3 rounded-2xl border border-[#E8DCCF]">
+            <div className="relative flex-1 sm:max-w-md">
+              <Search className="w-4 h-4 text-[#A1887F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={stockSearchQuery}
+                onChange={(e) => {
+                  setStockSearchQuery(e.target.value);
+                  setVisibleStocksCount(10);
+                }}
+                placeholder="ค้นหาอีเมลบัญชี, ชื่อแอป, หมายเหตุ, ผู้ซื้อ..."
+                className="w-full pl-9 pr-8 py-2 rounded-full bg-white border border-[#E8DCCF] text-xs font-medium text-[#5D4037] placeholder-[#A1887F] focus:outline-none focus:border-[#FFB4A2] shadow-xs"
+              />
+              {stockSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStockSearchQuery('');
+                    setVisibleStocksCount(10);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[#FFF0EB] text-[#8D6E63]"
+                  title="ล้างคำค้นหา"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <span className="text-xs font-bold text-[#8D6E63] text-right">
+              พบ {filteredStocks.length} บัญชี {stockSearchQuery && `(จากคำค้นหา "${stockSearchQuery}")`}
+            </span>
+          </div>
+
           {/* Stocks Table */}
           <div className="space-y-4">
-            {stocks.map((stock) => {
+            {displayedStocks.map((stock) => {
               const isServicing = stock.status === 'SERVICING';
 
               return (
@@ -1253,6 +1422,37 @@ export function AdminClient({
               );
             })}
           </div>
+
+          {/* Empty States */}
+          {stocks.length === 0 && (
+            <div className="text-center py-12 miki-card bg-white border border-[#E8DCCF] text-[#8D6E63] space-y-2">
+              <p className="font-bold text-sm">ยังไม่มีสต็อกบัญชีในระบบ</p>
+              <p className="text-xs">กดปุ่ม "เพิ่มบัญชีเข้าสต็อก" ด้านบนเพื่อเริ่มลงสต็อก</p>
+            </div>
+          )}
+
+          {stocks.length > 0 && filteredStocks.length === 0 && (
+            <div className="text-center py-12 miki-card bg-white border border-[#E8DCCF] text-[#8D6E63] space-y-2">
+              <p className="font-bold text-sm">ไม่พบบัญชีสต็อกที่ตรงกับ "{stockSearchQuery}"</p>
+              <p className="text-xs">ลองพิมพ์คำค้นหาด้วยอีเมล หรือชื่อแอปอื่น</p>
+            </div>
+          )}
+
+          {/* Pagination See More Button */}
+          {filteredStocks.length > displayedStocks.length && (
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => setVisibleStocksCount((prev) => prev + 10)}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] hover:border-[#FFB4A2] shadow-xs active:scale-95 transition-all"
+              >
+                <span>ดูสต็อกเพิ่มเติม (+10 บัญชี)</span>
+                <span className="text-[10px] text-[#8D6E63] font-normal">
+                  (แสดง {displayedStocks.length} จากทั้งหมด {filteredStocks.length} บัญชี)
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1403,7 +1603,7 @@ export function AdminClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E8DCCF]/60">
-                {users.map((u) => (
+                {displayedUsers.map((u) => (
                   <tr key={u.id} className="font-medium text-[#5D4037]">
                     <td className="py-3">
                       <div className="font-bold text-sm">{u.profileName || u.username}</div>
@@ -1436,6 +1636,22 @@ export function AdminClient({
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination See More Button */}
+            {users.length > displayedUsers.length && (
+              <div className="text-center pt-4 border-t border-[#F5EBE1]">
+                <button
+                  type="button"
+                  onClick={() => setVisibleUsersCount((prev) => prev + 10)}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] hover:border-[#FFB4A2] shadow-xs active:scale-95 transition-all"
+                >
+                  <span>ดูสมาชิกเพิ่มเติม (+10 ท่าน)</span>
+                  <span className="text-[10px] text-[#8D6E63] font-normal">
+                    (แสดง {displayedUsers.length} จาก {users.length} สมาชิก)
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1465,7 +1681,7 @@ export function AdminClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E8DCCF]/60">
-                {topups.map((t) => (
+                {displayedTopups.map((t) => (
                   <tr key={t.id} className="font-medium text-[#5D4037]">
                     <td className="py-3 font-mono">{t.txNumber}</td>
                     <td className="py-3 font-bold">@{t.user?.username}</td>
@@ -1514,6 +1730,22 @@ export function AdminClient({
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination See More Button */}
+            {topups.length > displayedTopups.length && (
+              <div className="text-center pt-4 border-t border-[#F5EBE1]">
+                <button
+                  type="button"
+                  onClick={() => setVisibleTopupsCount((prev) => prev + 10)}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] hover:border-[#FFB4A2] shadow-xs active:scale-95 transition-all"
+                >
+                  <span>ดูรายการสลิปเพิ่มเติม (+10 รายการ)</span>
+                  <span className="text-[10px] text-[#8D6E63] font-normal">
+                    (แสดง {displayedTopups.length} จาก {topups.length} รายการ)
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2028,7 +2260,7 @@ export function AdminClient({
               </div>
               <button
                 type="button"
-                onClick={() => setActiveTab('BANK_ACCOUNTS')}
+                onClick={() => handleTabClick('BANK_ACCOUNTS')}
                 className="px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] transition-colors self-start sm:self-auto shrink-0 shadow-2xs"
               >
                 ไปยังแท็บบัญชีธนาคาร →
@@ -2069,7 +2301,7 @@ export function AdminClient({
         <div className="miki-card p-6 bg-white border border-[#E8DCCF] space-y-4">
           <h2 className="text-lg font-black text-[#5D4037]">ประวัติการแก้ไขข้อมูลของแอดมิน (Audit Logs)</h2>
           <div className="divide-y divide-[#E8DCCF]/60 text-xs">
-            {auditLogs.map((log) => (
+            {displayedLogs.map((log) => (
               <div key={log.id} className="py-3 space-y-1">
                 <div className="flex items-center justify-between text-[#8D6E63]">
                   <span className="font-bold text-[#E5989B] font-mono px-2 py-0.5 bg-[#FFF8F3] rounded-md">
@@ -2081,6 +2313,22 @@ export function AdminClient({
               </div>
             ))}
           </div>
+
+          {/* Pagination See More Button */}
+          {auditLogs.length > displayedLogs.length && (
+            <div className="text-center pt-2 border-t border-[#F5EBE1]">
+              <button
+                type="button"
+                onClick={() => setVisibleLogsCount((prev) => prev + 15)}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] hover:border-[#FFB4A2] shadow-xs active:scale-95 transition-all"
+              >
+                <span>ดูบันทึกเพิ่มเติม (+15 บันทึก)</span>
+                <span className="text-[10px] text-[#8D6E63] font-normal">
+                  (แสดง {displayedLogs.length} จาก {auditLogs.length} บันทึก)
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
