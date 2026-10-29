@@ -86,6 +86,7 @@ export default async function HomePage() {
       name: p.name,
       imageUrl: p.imageUrl,
       price: p.price,
+      retailPrice: p.retailPrice,
       durationDays: p.durationDays,
       rules: p.rules,
       usageGuide: p.usageGuide,

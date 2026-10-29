@@ -43,6 +43,9 @@ export function ProductModal({
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
 
+  const isAgent = user?.role === 'AGENT' || user?.role === 'ADMIN';
+  const effectivePrice = isAgent ? product.price : (product.retailPrice || product.price);
+
   if (!isOpen) return null;
 
   const handleCopy = (text: string, field: string) => {
@@ -375,13 +378,44 @@ export function ProductModal({
                   <h3 className="font-black text-base sm:text-lg text-[#5D4037] leading-snug">
                     {product.name}
                   </h3>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-xl font-black text-[#E5989B]">
-                      {product.price.toLocaleString()} ฿
-                    </span>
-                    <span className="text-xs text-[#8D6E63] font-medium">
-                      / {product.durationDays} วัน
-                    </span>
+                  <div className="mt-1 space-y-1">
+                    {isAgent ? (
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xl font-black text-[#E5989B]">
+                            {product.price.toLocaleString()} ฿
+                          </span>
+                          <span className="text-[10px] text-[#2E7D32] font-extrabold bg-[#E8F5E9] px-2 py-0.5 rounded-full border border-[#C8E6C9]">
+                            ราคาส่งตัวแทน
+                          </span>
+                          <span className="text-xs text-[#8D6E63] font-medium">
+                            / {product.durationDays} วัน
+                          </span>
+                        </div>
+                        {product.retailPrice && product.retailPrice > product.price && (
+                          <p className="text-[11px] text-[#8D6E63] mt-0.5">
+                            ราคาปลีกทั่วไป: <span className="line-through">{product.retailPrice.toLocaleString()} ฿</span> (ประหยัด {(product.retailPrice - product.price).toLocaleString()} ฿)
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-xl font-black text-[#5D4037]">
+                            {(product.retailPrice || product.price).toLocaleString()} ฿
+                          </span>
+                          <span className="text-xs text-[#8D6E63] font-medium">
+                            / {product.durationDays} วัน (ราคาปกติ)
+                          </span>
+                        </div>
+                        {product.retailPrice && product.retailPrice > product.price && (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 mt-1 rounded-full bg-[#FFF0EB] border border-[#FFD9CE] text-[11px] font-bold text-[#E5989B]">
+                            <span>⚡ สมัครตัวแทน เหลือเพียง {product.price.toLocaleString()} ฿</span>
+                            <span className="text-[#8D6E63] font-normal">(ประหยัด {(product.retailPrice - product.price).toLocaleString()} ฿)</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -504,40 +538,58 @@ export function ProductModal({
               {/* User Balance & Purchase Action */}
               <div className="pt-2 border-t border-[#F5EBE1] space-y-3">
                 {user ? (
-                  <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
-                    <span>เครดิตคงเหลือของคุณ:</span>
-                    <span className="text-[#E5989B] font-black text-sm">
-                      {user.creditBalance.toLocaleString()} บาท
-                    </span>
-                  </div>
-                ) : (
-                  <div className="p-2.5 rounded-xl bg-[#FFF8F3] text-xs text-center font-bold text-[#6D4C41]">
-                    คุณยังไม่ได้เข้าสู่ระบบ กรุณาเข้าสู่ระบบก่อนกดซื้อ
-                  </div>
-                )}
+                  <>
+                    <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
+                      <span>เครดิตคงเหลือของคุณ:</span>
+                      <span className="text-[#E5989B] font-black text-sm">
+                        {user.creditBalance.toLocaleString()} บาท
+                      </span>
+                    </div>
 
-                {user && user.creditBalance < product.price ? (
-                  <Link
-                    href="/topup"
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-full text-xs sm:text-sm font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] transition-all"
-                  >
-                    <Wallet className="w-4 h-4" />
-                    <span>เครดิตไม่เพียงพอ (คลิกที่นี่เพื่อเติมเงิน)</span>
-                  </Link>
-                ) : (
-                  <button
-                    onClick={handlePurchase}
-                    disabled={loading || product.availableSlotsCount <= 0}
-                    className="w-full py-3.5 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
-                  >
-                    {loading ? (
-                      <span>กำลังจัดเตรียมและดึงบัญชี...</span>
-                    ) : product.availableSlotsCount <= 0 ? (
-                      <span>สินค้าหมดชั่วคราว</span>
+                    {user.creditBalance < effectivePrice ? (
+                      <Link
+                        href="/topup"
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-full text-xs sm:text-sm font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] transition-all"
+                      >
+                        <Wallet className="w-4 h-4" />
+                        <span>เครดิตไม่เพียงพอ (ต้องการ {effectivePrice.toLocaleString()} ฿) คลิกเติมเงิน</span>
+                      </Link>
                     ) : (
-                      <span>ยืนยันการกดซื้อ (หัก {product.price.toLocaleString()} เครดิต)</span>
+                      <button
+                        onClick={handlePurchase}
+                        disabled={loading || product.availableSlotsCount <= 0}
+                        className="w-full py-3.5 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                      >
+                        {loading ? (
+                          <span>กำลังจัดเตรียมและดึงบัญชี...</span>
+                        ) : product.availableSlotsCount <= 0 ? (
+                          <span>สินค้าหมดชั่วคราว</span>
+                        ) : (
+                          <span>
+                            ยืนยันการกดซื้อ (หัก {effectivePrice.toLocaleString()} เครดิต
+                            {isAgent ? ' - ราคาส่งตัวแทน' : ''})
+                          </span>
+                        )}
+                      </button>
                     )}
-                  </button>
+                  </>
+                ) : (
+                  <div className="space-y-2.5">
+                    <Link
+                      href="/register"
+                      className="w-full py-3.5 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span>สมัครตัวแทนเพื่อรับราคาส่ง ({product.price.toLocaleString()} ฿)</span>
+                    </Link>
+
+                    <Link
+                      href="/login?redirect=/"
+                      className="w-full py-2.5 rounded-full text-xs font-bold bg-white text-[#6D4C41] border border-[#E8DCCF] hover:bg-[#FFF8F3] transition-all flex items-center justify-center gap-2"
+                    >
+                      <span>เข้าสู่ระบบเพื่อซื้อสินค้า (ราคาปกติ {(product.retailPrice || product.price).toLocaleString()} ฿)</span>
+                    </Link>
+                  </div>
                 )}
               </div>
             </>

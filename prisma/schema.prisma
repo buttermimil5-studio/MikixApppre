@@ -43,6 +43,7 @@ model Product {
   name         String
   imageUrl     String
   price        Float
+  retailPrice  Float?         // ราคาปลีกทั่วไปสำหรับผู้ที่ไม่ได้สมัครตัวแทน
   durationDays Int            @default(30)
   rules        String
   usageGuide   String

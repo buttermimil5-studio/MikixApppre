@@ -17,6 +17,9 @@ import {
   saveBankAccountAction,
   deleteBankAccountAction,
   toggleBankAccountAction,
+  deleteStockAccountAction,
+  deleteProductAction,
+  deleteAdminOrderAction,
 } from '@/lib/actions/adminActions';
 import {
   BarChart3,
@@ -148,6 +151,7 @@ export function AdminClient({
   const [editProductModal, setEditProductModal] = useState<any | null>(null);
   const [prodName, setProdName] = useState('');
   const [prodPrice, setProdPrice] = useState<number | string>(89);
+  const [prodRetailPrice, setProdRetailPrice] = useState<number | string>(129);
   const [prodDuration, setProdDuration] = useState<number | string>(30);
   const [prodCategory, setProdCategory] = useState(categories[0]?.id || '');
   const [prodImage, setProdImage] = useState('');
@@ -417,6 +421,7 @@ export function AdminClient({
       id: editProductModal?.id,
       name: prodName,
       price: Number(prodPrice) || 0,
+      retailPrice: prodRetailPrice ? Number(prodRetailPrice) : null,
       durationDays: Number(prodDuration) || 30,
       categoryId: prodCategory,
       imageUrl: prodImage,
@@ -435,6 +440,110 @@ export function AdminClient({
       window.location.reload();
     } else {
       alert('บันทึกสินค้าไม่สำเร็จ');
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string, productName: string) => {
+    if (
+      !confirm(
+        `คุณแน่ใจหรือไม่ว่าต้องการลบสินค้า "${productName}"?\n\nคำเตือน: บัญชีสต็อก สิทธิ์จอ และข้อมูลคำสั่งซื้อที่ผูกกับสินค้านี้จะถูกลบออกจากระบบอย่างถาวร`
+      )
+    ) {
+      return;
+    }
+    const res = await deleteProductAction(productId);
+    if (res.success) {
+      setProducts(products.filter((p) => p.id !== productId));
+      setStocks(stocks.filter((s) => s.productId !== productId));
+      setEditProductModal(null);
+    } else {
+      alert(res.error || 'ลบสินค้าไม่สำเร็จ');
+    }
+  };
+
+  const handleDeleteStock = async (stockId: string, email: string) => {
+    if (
+      !confirm(
+        `คุณแน่ใจหรือไม่ว่าต้องการลบบัญชีสต็อก "${email}" ออกจากระบบ?\n\nคำเตือน: ข้อมูลสิทธิ์จอและรายการคำสั่งซื้อที่ผูกกับสต็อกนี้จะถูกลบทั้งหมด`
+      )
+    ) {
+      return;
+    }
+    const res = await deleteStockAccountAction(stockId);
+    if (res.success) {
+      setStocks(stocks.filter((s) => s.id !== stockId));
+    } else {
+      alert(res.error || 'ลบสต็อกไม่สำเร็จ');
+    }
+  };
+
+  const handleDeleteOrder = async (order: any) => {
+    const isConfirm = confirm(
+      `คุณต้องการลบคำสั่งซื้อเลขที่ "${order.orderNumber}" หรือไม่?\n\n` +
+        `- สินค้า: ${order.productName} (${order.slotName})\n` +
+        `- ยอดขายจะถูกหักลบออกจากสถิติแดชบอร์ด: -${order.amountPaid} ฿\n` +
+        `- สิทธิ์จอ ${order.slotName} จะถูกคืนสถานะว่าง (พร้อมนำไปขายต่อได้ทันที)\n\n` +
+        `กด [ ตกลง / OK ] เพื่อดำเนินการลบ`
+    );
+    if (!isConfirm) return;
+
+    let refund = false;
+    if (order.amountPaid > 0 && order.buyerUsername) {
+      refund = confirm(
+        `ต้องการคืนเครดิตเงินจำนวน ${order.amountPaid} ฿ ให้ผู้ซื้อ @${order.buyerUsername} ด้วยหรือไม่?\n\n` +
+          `- กด [ OK ] เพื่อ "คืนเครดิตเงิน" ให้ผู้ซื้อ\n` +
+          `- กด [ Cancel ] เพื่อ "ไม่คืนเครดิต" (กรณีเป็นออเดอร์เทสต์หรือยกเลิกโดยไม่คืนเงิน)`
+      );
+    }
+
+    const res = await deleteAdminOrderAction(order.id, refund);
+    if (res.success) {
+      // 1. Remove order from orders state
+      setOrders(orders.filter((o) => o.id !== order.id));
+
+      // 2. Adjust sales stats in real-time
+      setStats((prev: any) => ({
+        ...prev,
+        sales: {
+          daily: {
+            amount: Math.max(0, (prev.sales?.daily?.amount || 0) - order.amountPaid),
+            count: Math.max(0, (prev.sales?.daily?.count || 1) - 1),
+          },
+          monthly: {
+            amount: Math.max(0, (prev.sales?.monthly?.amount || 0) - order.amountPaid),
+            count: Math.max(0, (prev.sales?.monthly?.count || 1) - 1),
+          },
+          yearly: {
+            amount: Math.max(0, (prev.sales?.yearly?.amount || 0) - order.amountPaid),
+            count: Math.max(0, (prev.sales?.yearly?.count || 1) - 1),
+          },
+        },
+      }));
+
+      // 3. Update stock slots in state if found
+      setStocks((prevStocks) =>
+        prevStocks.map((stk) => ({
+          ...stk,
+          slots: stk.slots.map((sl: any) =>
+            sl.slotName === order.slotName && stk.email === order.email
+              ? { ...sl, status: 'AVAILABLE' }
+              : sl
+          ),
+        }))
+      );
+
+      // 4. Update user balance if refunded
+      if (refund) {
+        setUsers((prevUsers) =>
+          prevUsers.map((u) =>
+            u.username === order.buyerUsername
+              ? { ...u, creditBalance: u.creditBalance + order.amountPaid }
+              : u
+          )
+        );
+      }
+    } else {
+      alert(res.error || 'ลบคำสั่งซื้อไม่สำเร็จ');
     }
   };
 
@@ -707,7 +816,9 @@ export function AdminClient({
                     <th className="pb-3">อีเมลบัญชี</th>
                     <th className="pb-3">รหัสผ่าน</th>
                     <th className="pb-3">วันที่ซื้อ / หมดอายุ</th>
-                    <th className="pb-3 text-right">สถานะ</th>
+                    <th className="pb-3 text-right">ยอดขาย</th>
+                    <th className="pb-3 text-center">สถานะ</th>
+                    <th className="pb-3 text-right">จัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8DCCF]/50 font-medium">
@@ -735,7 +846,10 @@ export function AdminClient({
                         <div>ซื้อ: {new Date(ord.purchasedAt).toLocaleDateString('th-TH')}</div>
                         <div>หมด: {new Date(ord.expiresAt).toLocaleDateString('th-TH')}</div>
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 text-right font-bold text-[#E5989B]">
+                        {ord.amountPaid.toLocaleString()} ฿
+                      </td>
+                      <td className="py-3 text-center">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             ord.status === 'ACTIVE'
@@ -745,6 +859,16 @@ export function AdminClient({
                         >
                           {ord.status}
                         </span>
+                      </td>
+                      <td className="py-3 text-right">
+                        <button
+                          onClick={() => handleDeleteOrder(ord)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] hover:bg-[#FFE4E6] transition-colors shadow-2xs"
+                          title="ลบคำสั่งซื้อและหักลดยอดขาย"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>ลบ</span>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -824,16 +948,27 @@ export function AdminClient({
                       </p>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setRecycleStock(stock);
-                        setRecycleNewPassword('');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFEFE8]"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>เปลี่ยนรหัส & Recycle</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setRecycleStock(stock);
+                          setRecycleNewPassword('');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFEFE8]"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>เปลี่ยนรหัส & Recycle</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteStock(stock.id, stock.email)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] hover:bg-[#FFE4E6] transition-colors shadow-2xs"
+                        title="ลบบัญชีสต็อกนี้ออกจากระบบ"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>ลบสต็อก</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* App Subscription & Billing Info Bar */}
@@ -1003,6 +1138,7 @@ export function AdminClient({
                 setEditProductModal({ isNew: true });
                 setProdName('');
                 setProdPrice(89);
+                setProdRetailPrice(129);
                 setProdDuration(30);
                 setProdImage('');
                 setProdRules('');
@@ -1028,10 +1164,17 @@ export function AdminClient({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm text-[#5D4037] leading-snug">{p.name}</h3>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-extrabold text-sm text-[#5D4037] leading-snug truncate">{p.name}</h3>
                     <p className="text-xs text-[#8D6E63]">{p.category?.name} • {p.durationDays} วัน</p>
-                    <p className="text-sm font-black text-[#E5989B] mt-1">{p.price} ฿</p>
+                    <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-black text-[#E5989B]">ส่ง: {p.price} ฿</span>
+                      {p.retailPrice && (
+                        <span className="text-xs text-[#8D6E63] font-bold">
+                          ปลีก: {p.retailPrice} ฿
+                        </span>
+                      )}
+                    </div>
                     <div className="pt-1 flex flex-wrap gap-1">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF8F3] text-[#6D4C41] border border-[#FFD9CE]">
                         ตัดรอบ: {p.cutoffType === 'MIDNIGHT' ? 'เที่ยงคืน (23:59)' : p.cutoffType === 'EXACT_TIME' ? 'เวลาตรง 24 ชม.' : 'ปัดขึ้นชั่วโมง'}
@@ -1062,26 +1205,36 @@ export function AdminClient({
                     {p.isActive ? 'เปิดขาย (Active)' : 'ปิดขาย (Disabled)'}
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setEditProductModal(p);
-                      setProdName(p.name);
-                      setProdPrice(p.price);
-                      setProdDuration(p.durationDays);
-                      setProdCategory(p.categoryId);
-                      setProdImage(p.imageUrl);
-                      setProdRules(p.rules);
-                      setProdGuide(p.usageGuide);
-                      setProdOtp(p.otpEnabled);
-                      setProdLineOa(p.lineOaUrl || '');
-                      setProdCutoffType(p.cutoffType || 'ROUND_UP_HOUR');
-                      setProdHasProfilePin(p.hasProfilePin ?? false);
-                      setProdDefaultSlotCount(p.defaultSlotCount ?? 1);
-                    }}
-                    className="text-xs font-bold text-[#FFB4A2] hover:underline"
-                  >
-                    แก้ไขรายละเอียด
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditProductModal(p);
+                        setProdName(p.name);
+                        setProdPrice(p.price);
+                        setProdRetailPrice(p.retailPrice ?? '');
+                        setProdDuration(p.durationDays);
+                        setProdCategory(p.categoryId);
+                        setProdImage(p.imageUrl);
+                        setProdRules(p.rules);
+                        setProdGuide(p.usageGuide);
+                        setProdOtp(p.otpEnabled);
+                        setProdLineOa(p.lineOaUrl || '');
+                        setProdCutoffType(p.cutoffType || 'ROUND_UP_HOUR');
+                        setProdHasProfilePin(p.hasProfilePin ?? false);
+                        setProdDefaultSlotCount(p.defaultSlotCount ?? 1);
+                      }}
+                      className="text-xs font-bold text-[#FFB4A2] hover:underline"
+                    >
+                      แก้ไขรายละเอียด
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProduct(p.id, p.name)}
+                      className="p-1 rounded-md text-[#E11D48] hover:bg-[#FFF1F2] transition-colors"
+                      title="ลบสินค้านี้"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1549,59 +1702,26 @@ export function AdminClient({
               </div>
             </div>
 
-            {/* Bank Info & Payment */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">ชื่อธนาคาร</label>
-              <input
-                type="text"
-                value={settingsForm.bankName}
-                onChange={(e) => setSettingsForm({ ...settingsForm, bankName: e.target.value })}
-                className="w-full miki-input text-xs"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">ชื่อบัญชีธนาคาร</label>
-              <input
-                type="text"
-                value={settingsForm.bankAccountName}
-                onChange={(e) => setSettingsForm({ ...settingsForm, bankAccountName: e.target.value })}
-                className="w-full miki-input text-xs font-bold"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">เลขที่บัญชี</label>
-              <input
-                type="text"
-                value={settingsForm.bankAccountNumber}
-                onChange={(e) => setSettingsForm({ ...settingsForm, bankAccountNumber: e.target.value })}
-                className="w-full miki-input text-xs font-mono font-bold"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5D4037]">เบอร์พร้อมเพย์ / วอลเล็ท (สแกนจ่ายได้จริง)</label>
-              <input
-                type="text"
-                value={settingsForm.promptPayNumber}
-                onChange={(e) => setSettingsForm({ ...settingsForm, promptPayNumber: e.target.value })}
-                className="w-full miki-input text-xs font-mono font-bold"
-                placeholder="0899999999 หรือ เลขบัตร 13 หลัก"
-              />
-            </div>
-
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-xs font-bold text-[#5D4037]">
-                ลิงก์รูปภาพ QR บัญชีธนาคารปกติ (Bank QR URL สำหรับการ์ดกดพลิก)
-              </label>
-              <input
-                type="text"
-                value={settingsForm.bankQrUrl}
-                onChange={(e) => setSettingsForm({ ...settingsForm, bankQrUrl: e.target.value })}
-                className="w-full miki-input text-xs"
-                placeholder="https://... (ภาพ QR บัญชีที่ผู้ซื้อกดพลิกดูได้)"
-              />
+            {/* Bank Accounts Notice Box */}
+            <div className="md:col-span-2 p-4 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#E5989B] shrink-0 shadow-2xs">
+                  <Building className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-xs text-[#5D4037]">การจัดการบัญชีธนาคาร & พร้อมเพย์</h4>
+                  <p className="text-[11px] text-[#8D6E63]">
+                    ระบบได้แยกการจัดการบัญชีธนาคารไว้ที่แท็บ <strong>"บัญชีธนาคาร"</strong> เพื่อรองรับหลายบัญชีและ QR Code แยกตามบัญชี
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('BANK_ACCOUNTS')}
+                className="px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] transition-colors self-start sm:self-auto shrink-0 shadow-2xs"
+              >
+                ไปยังแท็บบัญชีธนาคาร →
+              </button>
             </div>
 
             {/* Embedded Slip2Go System Status */}
@@ -2179,9 +2299,9 @@ export function AdminClient({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#5D4037]">ราคา (บาท) *</label>
+                    <label className="text-xs font-bold text-[#2E7D32]">ราคาส่งตัวแทน (บาท) *</label>
                     <input
                       type="number"
                       required
@@ -2192,6 +2312,17 @@ export function AdminClient({
                           setProdPrice(0);
                         }
                       }}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#5D4037]">ราคาปลีกคนไม่สมัคร (บาท)</label>
+                    <input
+                      type="number"
+                      value={prodRetailPrice}
+                      onChange={(e) => setProdRetailPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      placeholder="เช่น 129"
                       className="w-full miki-input text-xs font-bold"
                     />
                   </div>
@@ -2386,21 +2517,35 @@ export function AdminClient({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-3.5 bg-[#FAF7F2] border-t border-[#F5EBE1] flex justify-end gap-2 flex-shrink-0 sticky bottom-0 z-10">
-                <button
-                  type="button"
-                  onClick={() => setEditProductModal(null)}
-                  className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={prodLoading}
-                  className="px-6 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
-                >
-                  {prodLoading ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
-                </button>
+              <div className="px-6 py-3.5 bg-[#FAF7F2] border-t border-[#F5EBE1] flex items-center justify-between gap-2 flex-shrink-0 sticky bottom-0 z-10">
+                {!editProductModal.isNew ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProduct(editProductModal.id, prodName)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] hover:bg-[#FFE4E6] transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>ลบสินค้านี้</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditProductModal(null)}
+                    className="px-5 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={prodLoading}
+                    className="px-6 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
+                  >
+                    {prodLoading ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

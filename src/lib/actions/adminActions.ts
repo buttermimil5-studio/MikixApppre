@@ -391,6 +391,53 @@ export async function recycleStockAccountAction(stockId: string, newPassword: st
   return { success: true };
 }
 
+export async function deleteStockAccountAction(stockId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const admin = await requireAdmin();
+
+    // Find all slots of this stock
+    const slots = await prisma.accountProfileSlot.findMany({
+      where: { accountStockId: stockId },
+      select: { id: true },
+    });
+    const slotIds = slots.map((s) => s.id);
+
+    await prisma.$transaction(async (tx) => {
+      if (slotIds.length > 0) {
+        // 1. Delete orders linked to slots
+        await tx.order.deleteMany({
+          where: { profileSlotId: { in: slotIds } },
+        });
+        // 2. Delete slots
+        await tx.accountProfileSlot.deleteMany({
+          where: { id: { in: slotIds } },
+        });
+      }
+
+      // 3. Delete stock
+      await tx.accountStock.delete({
+        where: { id: stockId },
+      });
+
+      // 4. Log audit
+      await tx.auditLog.create({
+        data: {
+          userId: admin.id,
+          action: 'DELETE_STOCK',
+          details: `แอดมิน ${admin.username} ลบบัญชีสต็อก ID: ${stockId}`,
+        },
+      });
+    });
+
+    revalidatePath('/admin');
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    console.error('deleteStockAccountAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการลบสต็อก' };
+  }
+}
+
 // 4. Products & Categories Management
 export async function getAdminProducts() {
   await requireAdmin();
@@ -430,6 +477,7 @@ export async function saveProductAction(data: {
   name: string;
   imageUrl: string;
   price: number;
+  retailPrice?: number | null;
   durationDays: number;
   rules: string;
   usageGuide: string;
@@ -447,6 +495,7 @@ export async function saveProductAction(data: {
     name: data.name,
     imageUrl: data.imageUrl,
     price: data.price,
+    retailPrice: data.retailPrice !== undefined ? data.retailPrice : null,
     durationDays: data.durationDays,
     rules: data.rules,
     usageGuide: data.usageGuide,
@@ -463,12 +512,93 @@ export async function saveProductAction(data: {
       where: { id: data.id },
       data: productData,
     });
+    revalidatePath('/admin');
+    revalidatePath('/');
     return { success: true, product: updated };
   } else {
     const created = await prisma.product.create({
       data: productData,
     });
+    revalidatePath('/admin');
+    revalidatePath('/');
     return { success: true, product: created };
+  }
+}
+
+export async function deleteProductAction(productId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const admin = await requireAdmin();
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, name: true },
+    });
+
+    if (!product) {
+      return { success: false, error: 'ไม่พบสินค้านี้' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete orders directly linked to this product
+      await tx.order.deleteMany({
+        where: { productId },
+      });
+
+      // 2. Unlink any slots having this product as targetProduct
+      await tx.accountProfileSlot.updateMany({
+        where: { productId },
+        data: { productId: null },
+      });
+
+      // 3. Find and delete account stocks for this product
+      const stocks = await tx.accountStock.findMany({
+        where: { productId },
+        select: { id: true },
+      });
+      const stockIds = stocks.map((s) => s.id);
+
+      if (stockIds.length > 0) {
+        const slots = await tx.accountProfileSlot.findMany({
+          where: { accountStockId: { in: stockIds } },
+          select: { id: true },
+        });
+        const slotIds = slots.map((s) => s.id);
+
+        if (slotIds.length > 0) {
+          await tx.order.deleteMany({
+            where: { profileSlotId: { in: slotIds } },
+          });
+          await tx.accountProfileSlot.deleteMany({
+            where: { id: { in: slotIds } },
+          });
+        }
+
+        await tx.accountStock.deleteMany({
+          where: { id: { in: stockIds } },
+        });
+      }
+
+      // 4. Delete product
+      await tx.product.delete({
+        where: { id: productId },
+      });
+
+      // 5. Log audit
+      await tx.auditLog.create({
+        data: {
+          userId: admin.id,
+          action: 'DELETE_PRODUCT',
+          details: `แอดมิน ${admin.username} ลบสินค้า ${product.name} (ID: ${productId})`,
+        },
+      });
+    });
+
+    revalidatePath('/admin');
+    revalidatePath('/');
+    return { success: true };
+  } catch (err: any) {
+    console.error('deleteProductAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการลบสินค้า' };
   }
 }
 
@@ -558,6 +688,84 @@ export async function getAdminOrders() {
       password: creds.password,
     };
   });
+}
+
+export async function deleteAdminOrderAction(
+  orderId: string,
+  refundCredit: boolean = false
+): Promise<{
+  success: boolean;
+  error?: string;
+  amountPaid?: number;
+  slotId?: string;
+  userId?: string;
+}> {
+  try {
+    const admin = await requireAdmin();
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        profileSlot: true,
+        user: true,
+        product: true,
+      },
+    });
+
+    if (!order) {
+      return { success: false, error: 'ไม่พบรายการคำสั่งซื้อนี้' };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Release slot back to AVAILABLE if slot exists
+      if (order.profileSlotId) {
+        await tx.accountProfileSlot.update({
+          where: { id: order.profileSlotId },
+          data: { status: 'AVAILABLE' },
+        });
+
+        // Update parent stock status to ACTIVE if it was FULL
+        if (order.profileSlot?.accountStockId) {
+          await tx.accountStock.update({
+            where: { id: order.profileSlot.accountStockId },
+            data: { status: 'ACTIVE' },
+          });
+        }
+      }
+
+      // 2. Refund credit to user if requested
+      if (refundCredit && order.userId && order.amountPaid > 0) {
+        await tx.user.update({
+          where: { id: order.userId },
+          data: {
+            creditBalance: { increment: order.amountPaid },
+          },
+        });
+      }
+
+      // 3. Delete order (reduces sales immediately because sales is aggregated from Order)
+      await tx.order.delete({
+        where: { id: orderId },
+      });
+
+      // 4. Log audit
+      await tx.auditLog.create({
+        data: {
+          userId: admin.id,
+          action: 'DELETE_ORDER',
+          details: `แอดมิน ${admin.username} ลบออเดอร์ ${order.orderNumber} ยอดขายหักออก -${order.amountPaid} ฿ (ผู้ซื้อ: @${order.user.username}, คืนเครดิต: ${refundCredit ? 'ใช่' : 'ไม่'})`,
+        },
+      });
+    });
+
+    revalidatePath('/admin');
+    revalidatePath('/orders');
+    revalidatePath('/');
+    return { success: true, amountPaid: order.amountPaid, slotId: order.profileSlotId, userId: order.userId };
+  } catch (err: any) {
+    console.error('deleteAdminOrderAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการลบคำสั่งซื้อ' };
+  }
 }
 
 // 6. Slip Verification Management

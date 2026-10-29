@@ -14,6 +14,7 @@ export function ProductCard({ product, user, onBalanceUpdate }: ProductCardProps
   const [modalOpen, setModalOpen] = useState(false);
 
   const isAvailable = product.availableSlotsCount > 0;
+  const isAgent = user?.role === 'AGENT' || user?.role === 'ADMIN';
 
   return (
     <>
@@ -75,10 +76,37 @@ export function ProductCard({ product, user, onBalanceUpdate }: ProductCardProps
         {/* Footer: Price & Purchase Action */}
         <div className="mt-4 pt-3.5 border-t border-[#F5EBE1] flex items-center justify-between">
           <div>
-            <span className="text-[10px] text-[#8D6E63] font-medium block">ราคา</span>
-            <span className="text-lg sm:text-xl font-black text-[#E5989B]">
-              {product.price.toLocaleString()} ฿
-            </span>
+            {isAgent ? (
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-[#2E7D32] font-extrabold bg-[#E8F5E9] px-2 py-0.5 rounded-full border border-[#C8E6C9]">
+                    ราคาส่งตัวแทน
+                  </span>
+                  {product.retailPrice && product.retailPrice > product.price && (
+                    <span className="text-[11px] text-[#A1887F] line-through">
+                      {product.retailPrice.toLocaleString()} ฿
+                    </span>
+                  )}
+                </div>
+                <span className="text-lg sm:text-xl font-black text-[#E5989B]">
+                  {product.price.toLocaleString()} ฿
+                </span>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-[#8D6E63] font-medium">ราคาปกติ</span>
+                  {product.retailPrice && product.retailPrice > product.price && (
+                    <span className="text-[10px] font-bold text-[#E5989B] bg-[#FFF0EB] px-1.5 py-0.2 rounded-md">
+                      สมัครตัวแทน {product.price.toLocaleString()} ฿
+                    </span>
+                  )}
+                </div>
+                <span className="text-lg sm:text-xl font-black text-[#5D4037]">
+                  {(product.retailPrice || product.price).toLocaleString()} ฿
+                </span>
+              </div>
+            )}
           </div>
 
           <button

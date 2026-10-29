@@ -64,11 +64,17 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
       return { success: false, error: 'สินค้านี้ไม่พร้อมจำหน่าย หรือถูกปิดการขายชั่วคราว' };
     }
 
+    // Determine price based on user role (AGENT/ADMIN get wholesale price, others get retail price)
+    const effectivePrice =
+      user.role === 'AGENT' || user.role === 'ADMIN'
+        ? product.price
+        : product.retailPrice || product.price;
+
     // 3. Fast pre-check for user balance
-    if (user.creditBalance < product.price) {
+    if (user.creditBalance < effectivePrice) {
       return {
         success: false,
-        error: `เครดิตของคุณไม่เพียงพอ (ต้องการ ${product.price} เครดิต แต่คุณมี ${user.creditBalance} เครดิต) กรุณาเติมเงินก่อนทำรายการ`,
+        error: `เครดิตของคุณไม่เพียงพอ (ต้องการ ${effectivePrice} เครดิต แต่คุณมี ${user.creditBalance} เครดิต) กรุณาเติมเงินก่อนทำรายการ`,
       };
     }
 
@@ -79,7 +85,7 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
         where: { id: user.id },
       });
 
-      if (!freshUser || freshUser.creditBalance < product.price) {
+      if (!freshUser || freshUser.creditBalance < effectivePrice) {
         throw new Error('INSUFFICIENT_CREDIT');
       }
 
@@ -118,7 +124,7 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
       const updatedUser = await tx.user.update({
         where: { id: user.id },
         data: {
-          creditBalance: { decrement: product.price },
+          creditBalance: { decrement: effectivePrice },
         },
       });
 
@@ -161,7 +167,7 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
           userId: user.id,
           productId: product.id,
           profileSlotId: availableSlot.id,
-          amountPaid: product.price,
+          amountPaid: effectivePrice,
           purchasedAt,
           expiresAt,
           status: 'ACTIVE',

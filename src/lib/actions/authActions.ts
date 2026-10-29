@@ -93,7 +93,7 @@ export async function registerAction(formData: FormData) {
         profileName,
         salesChannel,
         role: 'AGENT',
-        creditBalance: 100.0, // โบนัสต้อนรับตัวแทนใหม่ 100 เครดิตสำหรับทดลองกดสินค้า
+        creditBalance: 0.0,
         frameTheme: 'BUNNY',
         frameAccessory: 'BOW',
       },
