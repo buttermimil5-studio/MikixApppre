@@ -148,7 +148,7 @@ export default function RegisterPage() {
               className="w-full py-3 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-xs"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{loading ? '🐾 น้องแมวกำลังสมัครสมาชิกให้น้า...' : 'ยืนยันการสมัครสมาชิก'}</span>
+              <span>{loading ? 'กำลังลงทะเบียน...' : 'ยืนยันการสมัครสมาชิก'}</span>
             </button>
           </form>
 
