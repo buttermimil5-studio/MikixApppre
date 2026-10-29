@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import {
   getAdminDashboardStats,
   getStoreSettings,
+  getAdminProducts,
 } from '@/lib/actions/adminActions';
 import { AdminClient } from './AdminClient';
 
@@ -15,13 +16,13 @@ export default async function AdminPage() {
     redirect('/login?redirect=/admin');
   }
 
-  // Fast initial load: only load dashboard stats, settings & categories!
-  // All other heavy tab data (stocks, orders, users, slips, logs) are loaded on-demand
-  // when the admin clicks that tab. This prevents Vercel timeouts and serverless database pooling errors!
-  const [stats, storeSetting, categories] = await Promise.all([
+  // Fast initial load: Dashboard stats, settings, categories, and products list!
+  // Heavy tabs (hundreds of stocks with AES decrypt, orders, users, slips, logs) are loaded on-demand.
+  const [stats, storeSetting, categories, products] = await Promise.all([
     getAdminDashboardStats(),
     getStoreSettings(),
     prisma.category.findMany({ orderBy: { sortOrder: 'asc' } }),
+    getAdminProducts(),
   ]);
 
   return (
@@ -33,6 +34,7 @@ export default async function AdminPage() {
           initialStats={stats}
           initialSettings={storeSetting}
           categories={categories}
+          initialProducts={products}
         />
       </main>
     </div>

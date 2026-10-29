@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   getAdminDashboardStats,
   getAdminStocks,
@@ -219,6 +219,12 @@ export function AdminClient({
 
   const [newStockModal, setNewStockModal] = useState(false);
   const [newStockProduct, setNewStockProduct] = useState(products[0]?.id || '');
+
+  useEffect(() => {
+    if (!newStockProduct && products.length > 0) {
+      setNewStockProduct(products[0].id);
+    }
+  }, [products, newStockProduct]);
   const [newStockEmail, setNewStockEmail] = useState('');
   const [newStockPassword, setNewStockPassword] = useState('');
   const [newStockNotes, setNewStockNotes] = useState('');
@@ -428,6 +434,23 @@ export function AdminClient({
 
   const handleCreateStock = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const targetProductId = newStockProduct || products[0]?.id;
+    if (!targetProductId) {
+      alert('ไม่พบสินค้าที่เลือก กรุณาสร้างสินค้าในแท็บ "สินค้า & หมวดหมู่" ก่อนทำการเพิ่มสต็อก');
+      return;
+    }
+
+    if (!newStockEmail.trim()) {
+      alert('กรุณากรอกอีเมลบัญชี');
+      return;
+    }
+
+    if (!newStockPassword.trim()) {
+      alert('กรุณากรอกรหัสผ่านบัญชี');
+      return;
+    }
+
     setNewStockLoading(true);
 
     const slots = newStockSlots.map((s, idx) => ({
@@ -439,9 +462,9 @@ export function AdminClient({
     }));
 
     const res = await addStockAccountAction({
-      productId: newStockProduct,
-      email: newStockEmail,
-      password: newStockPassword,
+      productId: targetProductId,
+      email: newStockEmail.trim(),
+      password: newStockPassword.trim(),
       notes: newStockNotes,
       registeredAt: newStockRegisteredAt || null,
       billingDate: newStockBillingDate || null,
@@ -454,7 +477,7 @@ export function AdminClient({
     if (res.success) {
       window.location.reload();
     } else {
-      alert('เพิ่มสต็อกไม่สำเร็จ');
+      alert(res.error || 'เพิ่มสต็อกไม่สำเร็จ');
     }
   };
 
@@ -1161,7 +1184,12 @@ export function AdminClient({
               </p>
             </div>
             <button
-              onClick={() => setNewStockModal(true)}
+              onClick={() => {
+                if (!newStockProduct && products.length > 0) {
+                  setNewStockProduct(products[0].id);
+                }
+                setNewStockModal(true);
+              }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
             >
               <Plus className="w-4 h-4" />
@@ -2541,25 +2569,31 @@ export function AdminClient({
             <form onSubmit={handleCreateStock} className="flex flex-col flex-1 overflow-hidden">
               <div className="p-6 overflow-y-auto flex-1 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">เลือกสินค้า</label>
-                  <select
-                    value={newStockProduct}
-                    onChange={(e) => {
-                      const prodId = e.target.value;
-                      setNewStockProduct(prodId);
-                      const prod = products.find((p) => p.id === prodId);
-                      if (prod && prod.hasProfilePin) {
-                        applyNetflixPreset();
-                      }
-                    }}
-                    className="w-full miki-input text-xs font-bold"
-                  >
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} {p.hasProfilePin ? `(แบ่ง ${p.defaultSlotCount || 1} จอ + PIN)` : '(เต็มสิทธิ์)'}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="text-xs font-bold text-[#5D4037]">เลือกสินค้า *</label>
+                  {products.length > 0 ? (
+                    <select
+                      value={newStockProduct || products[0]?.id || ''}
+                      onChange={(e) => {
+                        const prodId = e.target.value;
+                        setNewStockProduct(prodId);
+                        const prod = products.find((p) => p.id === prodId);
+                        if (prod && prod.hasProfilePin) {
+                          applyNetflixPreset();
+                        }
+                      }}
+                      className="w-full miki-input text-xs font-bold"
+                    >
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.hasProfilePin ? `(แบ่ง ${p.defaultSlotCount || 1} จอ + PIN)` : '(เต็มสิทธิ์)'}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-[#FFF1F2] border border-[#FECDD3] text-xs text-[#E11D48] font-bold">
+                      ยังไม่มีรายการสินค้าในระบบ กรุณาไปที่แท็บ "สินค้า & หมวดหมู่" เพื่อสร้างสินค้าก่อนเพิ่มสต็อก
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

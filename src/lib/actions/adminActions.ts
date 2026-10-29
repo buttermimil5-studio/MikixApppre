@@ -241,47 +241,70 @@ export async function addStockAccountAction(data: {
   autoRenew?: boolean;
   slots: { slotName: string; slotPin?: string; deviceType?: string; productId?: string | null; status?: string }[];
 }) {
-  const admin = await requireAdmin();
+  try {
+    const admin = await requireAdmin();
 
-  const enc = encryptStockCredentials(data.email.trim(), data.password.trim());
+    if (!data.productId || data.productId.trim().length === 0) {
+      return { success: false, error: 'กรุณาเลือกสินค้าที่ต้องการลงสต็อก' };
+    }
+    if (!data.email || data.email.trim().length === 0) {
+      return { success: false, error: 'กรุณากรอกอีเมลบัญชี' };
+    }
+    if (!data.password || data.password.trim().length === 0) {
+      return { success: false, error: 'กรุณากรอกรหัสผ่านบัญชี' };
+    }
 
-  const stock = await prisma.accountStock.create({
-    data: {
-      productId: data.productId,
-      encryptedEmail: enc.encryptedEmail,
-      encryptedPassword: enc.encryptedPassword,
-      iv: enc.iv,
-      tag: enc.tag,
-      passwordIv: enc.passwordIv,
-      passwordTag: enc.passwordTag,
-      notes: data.notes || '',
-      totalSlots: data.slots.length,
-      status: 'ACTIVE',
-      registeredAt: data.registeredAt ? new Date(data.registeredAt) : null,
-      billingDate: data.billingDate ? new Date(data.billingDate) : null,
-      paymentMethod: data.paymentMethod ? data.paymentMethod.trim() : null,
-      autoRenew: data.autoRenew !== undefined ? data.autoRenew : true,
-      profileSlots: {
-        create: data.slots.map((s) => ({
-          slotName: s.slotName || 'จอ 1',
-          slotPin: s.slotPin && s.slotPin.trim().length > 0 ? s.slotPin.trim() : null,
-          deviceType: s.deviceType || 'MOBILE',
-          productId: s.productId || null,
-          status: s.status || 'AVAILABLE',
-        })),
+    const productExists = await prisma.product.findUnique({
+      where: { id: data.productId.trim() },
+      select: { id: true, name: true },
+    });
+    if (!productExists) {
+      return { success: false, error: 'ไม่พบสินค้าที่เลือกในระบบ กรุณาเลือกสินค้าใหม่อีกครั้ง' };
+    }
+
+    const enc = encryptStockCredentials(data.email.trim(), data.password.trim());
+
+    const stock = await prisma.accountStock.create({
+      data: {
+        productId: data.productId.trim(),
+        encryptedEmail: enc.encryptedEmail,
+        encryptedPassword: enc.encryptedPassword,
+        iv: enc.iv,
+        tag: enc.tag,
+        passwordIv: enc.passwordIv,
+        passwordTag: enc.passwordTag,
+        notes: data.notes || '',
+        totalSlots: data.slots.length,
+        status: 'ACTIVE',
+        registeredAt: data.registeredAt ? new Date(data.registeredAt) : null,
+        billingDate: data.billingDate ? new Date(data.billingDate) : null,
+        paymentMethod: data.paymentMethod ? data.paymentMethod.trim() : null,
+        autoRenew: data.autoRenew !== undefined ? data.autoRenew : true,
+        profileSlots: {
+          create: data.slots.map((s) => ({
+            slotName: s.slotName || 'จอ 1',
+            slotPin: s.slotPin && s.slotPin.trim().length > 0 ? s.slotPin.trim() : null,
+            deviceType: s.deviceType || 'MOBILE',
+            productId: s.productId || null,
+            status: s.status || 'AVAILABLE',
+          })),
+        },
       },
-    },
-  });
+    });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: admin.id,
-      action: 'STOCK_ADD',
-      details: `แอดมิน ${admin.username} เพิ่มสต็อกบัญชีใหม่สำหรับสินค้ารหัส ${data.productId} จำนวน ${data.slots.length} สิทธิ์ (ตัดเงินผ่าน: ${data.paymentMethod || 'ไม่ระบุ'})`,
-    },
-  });
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'STOCK_ADD',
+        details: `แอดมิน ${admin.username} เพิ่มสต็อกบัญชีใหม่สำหรับสินค้า ${productExists.name} (รหัส ${data.productId}) จำนวน ${data.slots.length} สิทธิ์ (ตัดเงินผ่าน: ${data.paymentMethod || 'ไม่ระบุ'})`,
+      },
+    });
 
-  return { success: true, stockId: stock.id };
+    return { success: true, stockId: stock.id };
+  } catch (err: any) {
+    console.error('addStockAccountAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการเพิ่มสต็อก' };
+  }
 }
 
 export async function updateStockAccountAction(data: {
