@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { ShokupanIcon } from './BakeryLineIcons';
 
 interface BakeryLoadingModalProps {
   message?: string;
@@ -14,17 +13,22 @@ export function BakeryLoadingModal({
 }: BakeryLoadingModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#5D4037]/25 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white/95 border border-[#FFD9CE] rounded-[2rem] px-8 py-7 shadow-[0_16px_40px_rgba(141,110,99,0.2)] flex flex-col items-center gap-4 max-w-xs w-full text-center">
-        {/* Cute Bakery Shokupan Icon */}
-        <div className="w-14 h-14 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] flex items-center justify-center shadow-xs">
-          <ShokupanIcon className="w-8 h-8 animate-pulse" />
+      <div className="bg-white/95 border border-[#FFD9CE] rounded-[2rem] px-8 py-6 shadow-[0_16px_40px_rgba(141,110,99,0.2)] flex flex-col items-center gap-3.5 max-w-xs w-full text-center">
+        {/* Cat Mascot Image */}
+        <div className="w-16 h-16 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] flex items-center justify-center p-1.5 shadow-xs overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/cat-mascot.png"
+            alt="น้องแมว"
+            className="w-full h-full object-contain select-none animate-pulse"
+          />
         </div>
 
-        {/* Minimalist flowing 3 dots */}
-        <div className="flex items-center justify-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FFB4A2] animate-bounce [animation-delay:-0.3s]"></span>
-          <span className="w-2.5 h-2.5 rounded-full bg-[#E5989B] animate-bounce [animation-delay:-0.15s]"></span>
-          <span className="w-2.5 h-2.5 rounded-full bg-[#B5838D] animate-bounce"></span>
+        {/* Minimalist flowing 3 wave dots - small & uniform soft light brown */}
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#BCAAA4] animate-bounce [animation-delay:-0.3s]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#BCAAA4] animate-bounce [animation-delay:-0.15s]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#BCAAA4] animate-bounce" />
         </div>
 
         <div>
