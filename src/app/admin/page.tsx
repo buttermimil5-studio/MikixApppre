@@ -14,6 +14,7 @@ import {
   getAdminOrders,
   getBankAccounts,
   getStoreContacts,
+  getAdminMusicTracks,
 } from '@/lib/actions/adminActions';
 import { AdminClient } from './AdminClient';
 
@@ -36,6 +37,7 @@ export default async function AdminPage() {
     orders,
     bankAccounts,
     storeContacts,
+    musicTracks,
   ] = await Promise.all([
     getAdminDashboardStats(),
     getAdminStocks(),
@@ -48,6 +50,7 @@ export default async function AdminPage() {
     getAdminOrders(),
     getBankAccounts(),
     getStoreContacts(),
+    getAdminMusicTracks(),
   ]);
 
   return (
@@ -67,8 +70,10 @@ export default async function AdminPage() {
           initialOrders={orders}
           initialBankAccounts={bankAccounts}
           initialContacts={storeContacts}
+          initialMusicTracks={musicTracks}
         />
       </main>
     </div>
   );
 }
+

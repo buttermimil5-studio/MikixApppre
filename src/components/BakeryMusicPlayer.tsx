@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Music, Play, Pause, Volume2, VolumeX, Disc3, ChevronDown, ChevronUp } from 'lucide-react';
+import { Music, Play, Pause, Volume2, VolumeX, Disc3, ChevronDown, ChevronUp, SkipForward, SkipBack } from 'lucide-react';
 import { playBubblePop } from '@/lib/soundEffects';
+import { getActiveMusicTracks } from '@/lib/actions/adminActions';
 
-// High-availability cozy cafe acoustic lofi tracks
-const PLAYLIST = [
+// High-availability cozy cafe acoustic lofi tracks (fallback)
+const DEFAULT_PLAYLIST = [
   {
     title: 'Warm Cinnamon Bakery Lo-fi',
     artist: 'Miki Cafe Studio',
@@ -19,12 +20,23 @@ const PLAYLIST = [
 ];
 
 export function BakeryMusicPlayer() {
+  const [playlist, setPlaylist] = useState<any[]>(DEFAULT_PLAYLIST);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.35);
   const [isMuted, setIsMuted] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [trackIndex, setTrackIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    getActiveMusicTracks().then((tracks) => {
+      if (tracks && tracks.length > 0) {
+        setPlaylist(tracks);
+      }
+    }).catch((err) => {
+      console.debug('Failed to load dynamic tracks, using fallback', err);
+    });
+  }, []);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -49,20 +61,41 @@ export function BakeryMusicPlayer() {
   };
 
   const handleEnded = () => {
-    setTrackIndex((prev) => (prev + 1) % PLAYLIST.length);
+    setTrackIndex((prev) => (prev + 1) % playlist.length);
   };
 
-  const currentTrack = PLAYLIST[trackIndex];
+  const handleNextTrack = () => {
+    playBubblePop();
+    setTrackIndex((prev) => (prev + 1) % playlist.length);
+    if (isPlaying && audioRef.current) {
+      setTimeout(() => {
+        audioRef.current?.play().catch(console.debug);
+      }, 100);
+    }
+  };
+
+  const handlePrevTrack = () => {
+    playBubblePop();
+    setTrackIndex((prev) => (prev - 1 + playlist.length) % playlist.length);
+    if (isPlaying && audioRef.current) {
+      setTimeout(() => {
+        audioRef.current?.play().catch(console.debug);
+      }, 100);
+    }
+  };
+
+  const currentTrack = playlist[trackIndex % playlist.length] || DEFAULT_PLAYLIST[0];
 
   return (
     <div className="fixed bottom-20 sm:bottom-6 right-4 z-40">
       <audio
         ref={audioRef}
         src={currentTrack.url}
-        loop={PLAYLIST.length === 1}
+        loop={playlist.length === 1}
         onEnded={handleEnded}
-        preload="metadata"
+        preload="none"
       />
+
 
       {/* Expanded Control Box */}
       {isExpanded && (
@@ -84,9 +117,29 @@ export function BakeryMusicPlayer() {
             </button>
           </div>
 
-          <div className="py-2">
-            <p className="text-xs font-medium truncate text-[#5D4037]">{currentTrack.title}</p>
-            <p className="text-[10px] text-[#8D6E63]">{currentTrack.artist}</p>
+          <div className="py-2 flex items-center justify-between">
+            <div className="truncate flex-1 mr-2">
+              <p className="text-xs font-medium truncate text-[#5D4037]">{currentTrack.title}</p>
+              <p className="text-[10px] text-[#8D6E63]">{currentTrack.artist}</p>
+            </div>
+            {playlist.length > 1 && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={handlePrevTrack}
+                  className="p-1 hover:bg-[#5D4037]/10 rounded-full text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+                  title="เพลงก่อนหน้า"
+                >
+                  <SkipBack className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleNextTrack}
+                  className="p-1 hover:bg-[#5D4037]/10 rounded-full text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+                  title="เพลงถัดไป"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Volume Slider */}

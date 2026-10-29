@@ -9,12 +9,16 @@ interface ProductCatalogProps {
   initialProducts: any[];
   categories: any[];
   user: any;
+  storeSetting?: any;
+  bankAccounts?: any[];
 }
 
 export function ProductCatalog({
   initialProducts,
   categories,
   user: initialUser,
+  storeSetting,
+  bankAccounts = [],
 }: ProductCatalogProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,6 +87,8 @@ export function ProductCatalog({
               key={product.id}
               product={product}
               user={user}
+              storeSetting={storeSetting}
+              bankAccounts={bankAccounts}
               onBalanceUpdate={(newBalance) => {
                 if (user) {
                   setUser({ ...user, creditBalance: newBalance });

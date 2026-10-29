@@ -184,6 +184,7 @@ export async function getAdminStocks() {
       },
     },
     orderBy: { createdAt: 'desc' },
+    take: 100,
   });
 
   return stocks.map((s) => {
@@ -667,6 +668,7 @@ export async function getAdminOrders() {
       },
     },
     orderBy: { purchasedAt: 'desc' },
+    take: 100,
   });
 
   return orders.map((o) => {
@@ -774,6 +776,7 @@ export async function getAdminTopupTransactions() {
   return prisma.topupTransaction.findMany({
     include: { user: true },
     orderBy: { createdAt: 'desc' },
+    take: 100,
   });
 }
 
@@ -987,4 +990,161 @@ export async function toggleBankAccountAction(id: string, isActive: boolean) {
   });
   return { success: true };
 }
+
+const DEFAULT_MUSIC_TRACKS = [
+  {
+    id: 'default-1',
+    title: 'Warm Cinnamon Bakery Lo-fi',
+    artist: 'Miki Cafe Studio',
+    url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
+    isActive: true,
+    sortOrder: 0,
+  },
+  {
+    id: 'default-2',
+    title: 'Cozy Morning Coffee',
+    artist: 'Miki Cafe Studio',
+    url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=cozy-lounge-10284.mp3',
+    isActive: true,
+    sortOrder: 1,
+  },
+];
+
+export async function getActiveMusicTracks() {
+  try {
+    const tracks = await prisma.musicTrack.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    if (tracks.length === 0) {
+      return DEFAULT_MUSIC_TRACKS;
+    }
+    return tracks;
+  } catch (error) {
+    console.error('Failed to get active music tracks:', error);
+    return DEFAULT_MUSIC_TRACKS;
+  }
+}
+
+export async function getAdminMusicTracks() {
+  await requireAdmin();
+  const tracks = await prisma.musicTrack.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+  });
+  if (tracks.length === 0) {
+    try {
+      await prisma.musicTrack.createMany({
+        data: [
+          {
+            title: 'Warm Cinnamon Bakery Lo-fi',
+            artist: 'Miki Cafe Studio',
+            url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
+            isActive: true,
+            sortOrder: 0,
+          },
+          {
+            title: 'Cozy Morning Coffee',
+            artist: 'Miki Cafe Studio',
+            url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=cozy-lounge-10284.mp3',
+            isActive: true,
+            sortOrder: 1,
+          },
+        ],
+      });
+      return await prisma.musicTrack.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      });
+    } catch (e) {
+      console.error('Error seeding music tracks:', e);
+      return DEFAULT_MUSIC_TRACKS;
+    }
+  }
+  return tracks;
+}
+
+export async function saveMusicTrackAction(data: {
+  id?: string;
+  title: string;
+  artist?: string;
+  url: string;
+  isActive?: boolean;
+  sortOrder?: number;
+}) {
+  const admin = await requireAdmin();
+  try {
+    if (data.id) {
+      await prisma.musicTrack.update({
+        where: { id: data.id },
+        data: {
+          title: data.title,
+          artist: data.artist || 'Miki Cafe Studio',
+          url: data.url,
+          isActive: data.isActive !== undefined ? data.isActive : true,
+          sortOrder: data.sortOrder || 0,
+        },
+      });
+    } else {
+      await prisma.musicTrack.create({
+        data: {
+          title: data.title,
+          artist: data.artist || 'Miki Cafe Studio',
+          url: data.url,
+          isActive: data.isActive !== undefined ? data.isActive : true,
+          sortOrder: data.sortOrder || 0,
+        },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: data.id ? 'UPDATE_MUSIC_TRACK' : 'CREATE_MUSIC_TRACK',
+        details: `บันทึกเพลง: ${data.title}`,
+      },
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error saving music track:', error);
+    return { success: false, error: 'ไม่สามารถบันทึกเพลงได้: ' + (error.message || '') };
+  }
+}
+
+export async function deleteMusicTrackAction(trackId: string) {
+  const admin = await requireAdmin();
+  try {
+    const track = await prisma.musicTrack.findUnique({ where: { id: trackId } });
+    await prisma.musicTrack.delete({
+      where: { id: trackId },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'DELETE_MUSIC_TRACK',
+        details: `ลบเพลง: ${track?.title || trackId}`,
+      },
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting music track:', error);
+    return { success: false, error: 'ไม่สามารถลบเพลงได้' };
+  }
+}
+
+export async function toggleMusicTrackAction(trackId: string, isActive: boolean) {
+  await requireAdmin();
+  try {
+    await prisma.musicTrack.update({
+      where: { id: trackId },
+      data: { isActive },
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error toggling music track:', error);
+    return { success: false, error: 'ไม่สามารถเปลี่ยนสถานะเพลงได้' };
+  }
+}
+
 

@@ -24,7 +24,7 @@ const getCachedStoreData = unstable_cache(
       });
     }
 
-    const [categories, contacts, rawProducts] = await Promise.all([
+    const [categories, contacts, rawProducts, bankAccounts] = await Promise.all([
       prisma.category.findMany({
         orderBy: { sortOrder: 'asc' },
       }),
@@ -55,9 +55,13 @@ const getCachedStoreData = unstable_cache(
         },
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.bankAccount.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      }),
     ]);
 
-    return { storeSetting, categories, contacts, rawProducts };
+    return { storeSetting, categories, contacts, rawProducts, bankAccounts };
   },
   ['home_store_catalog'],
   { revalidate: 30, tags: ['store_data', 'products'] }
@@ -69,7 +73,7 @@ export default async function HomePage() {
     getCachedStoreData(),
   ]);
 
-  const { storeSetting, categories, contacts, rawProducts } = storeData;
+  const { storeSetting, categories, contacts, rawProducts, bankAccounts } = storeData;
 
   const products = rawProducts.map((p: any) => {
     // Count available slots across account stocks and directly assigned slots
@@ -113,8 +117,11 @@ export default async function HomePage() {
           initialProducts={products}
           categories={categories}
           user={user}
+          storeSetting={storeSetting}
+          bankAccounts={bankAccounts}
         />
       </main>
+
 
       {/* Cozy Japanese Bakery Cafe Footer */}
       <footer className="mt-16 border-t border-[#E8DCCF] bg-[#FFFDF7] py-10">

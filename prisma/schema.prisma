@@ -59,6 +59,9 @@ model Product {
   accountStocks AccountStock[]
   orders        Order[]
   assignedSlots AccountProfileSlot[] @relation("SlotTargetProduct")
+
+  @@index([categoryId])
+  @@index([isActive])
 }
 
 model AccountStock {
@@ -82,6 +85,9 @@ model AccountStock {
   updatedAt         DateTime             @updatedAt
 
   profileSlots      AccountProfileSlot[]
+
+  @@index([productId])
+  @@index([status])
 }
 
 model AccountProfileSlot {
@@ -98,6 +104,10 @@ model AccountProfileSlot {
   updatedAt      DateTime     @updatedAt
 
   order          Order?
+
+  @@index([accountStockId])
+  @@index([productId])
+  @@index([status])
 }
 
 model Order {
@@ -115,6 +125,11 @@ model Order {
   status         String             @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
   otpRequestedAt DateTime?
   otpCount       Int                @default(0)
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+  @@index([purchasedAt])
 }
 
 model TopupTransaction {
@@ -131,6 +146,10 @@ model TopupTransaction {
   adminNote    String?
   createdAt    DateTime  @default(now())
   verifiedAt   DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model StoreSetting {
@@ -166,6 +185,9 @@ model AuditLog {
   details   String
   ipAddress String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model StoreContact {
@@ -191,4 +213,18 @@ model BankAccount {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
+
+model MusicTrack {
+  id        String   @id @default(cuid())
+  title     String
+  artist    String   @default("Miki Cafe Studio")
+  url       String
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 

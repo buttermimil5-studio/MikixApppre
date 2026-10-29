@@ -20,6 +20,9 @@ import {
   deleteStockAccountAction,
   deleteProductAction,
   deleteAdminOrderAction,
+  saveMusicTrackAction,
+  deleteMusicTrackAction,
+  toggleMusicTrackAction,
 } from '@/lib/actions/adminActions';
 import {
   BarChart3,
@@ -49,6 +52,11 @@ import {
   Monitor,
   Tv,
   Smartphone,
+  Music,
+  Disc3,
+  Play,
+  Pause,
+  Volume2,
 } from 'lucide-react';
 
 interface AdminClientProps {
@@ -63,6 +71,7 @@ interface AdminClientProps {
   initialOrders?: any[];
   initialBankAccounts?: any[];
   initialContacts?: any[];
+  initialMusicTracks?: any[];
 }
 
 export function AdminClient({
@@ -77,9 +86,10 @@ export function AdminClient({
   initialOrders = [],
   initialBankAccounts = [],
   initialContacts = [],
+  initialMusicTracks = [],
 }: AdminClientProps) {
   const [activeTab, setActiveTab] = useState<
-    'DASHBOARD' | 'ORDERS' | 'STOCKS' | 'PRODUCTS' | 'USERS' | 'SLIPS' | 'BANK_ACCOUNTS' | 'SETTINGS' | 'LOGS'
+    'DASHBOARD' | 'ORDERS' | 'STOCKS' | 'PRODUCTS' | 'USERS' | 'SLIPS' | 'BANK_ACCOUNTS' | 'MUSIC' | 'SETTINGS' | 'LOGS'
   >('DASHBOARD');
 
   const [stats, setStats] = useState(initialStats);
@@ -92,6 +102,8 @@ export function AdminClient({
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [bankAccounts, setBankAccounts] = useState(initialBankAccounts);
   const [contacts, setContacts] = useState(initialContacts);
+  const [musicTracks, setMusicTracks] = useState(initialMusicTracks);
+
 
   // Modals & form states
   const [creditModalUser, setCreditModalUser] = useState<any | null>(null);
@@ -183,6 +195,17 @@ export function AdminClient({
   const [contactIcon, setContactIcon] = useState('MessageCircle');
   const [contactLoading, setContactLoading] = useState(false);
 
+  // Music Management Modal & States
+  const [musicModal, setMusicModal] = useState<any | null>(null);
+  const [musicTitle, setMusicTitle] = useState('');
+  const [musicArtist, setMusicArtist] = useState('Miki Cafe Studio');
+  const [musicUrl, setMusicUrl] = useState('');
+  const [musicIsActive, setMusicIsActive] = useState(true);
+  const [musicSortOrder, setMusicSortOrder] = useState(0);
+  const [musicLoading, setMusicLoading] = useState(false);
+  const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+
   const [settingsForm, setSettingsForm] = useState({
     storeName: settings?.storeName || '',
     storeTag: settings?.storeTag || '森のベーカリー',
@@ -216,6 +239,7 @@ export function AdminClient({
     { id: 'USERS', label: 'สมาชิก & ปรับเครดิต', icon: Users },
     { id: 'SLIPS', label: 'ตรวจสอบสลิป', icon: CreditCard },
     { id: 'BANK_ACCOUNTS', label: 'บัญชีธนาคาร', icon: Building },
+    { id: 'MUSIC', label: 'เพลงคาเฟ่', icon: Music },
     { id: 'SETTINGS', label: 'ตั้งค่าร้านค้า', icon: Settings },
     { id: 'LOGS', label: 'ประวัติ Audit Logs', icon: History },
   ];
@@ -620,6 +644,103 @@ export function AdminClient({
       setContacts(contacts.filter((c) => c.id !== id));
     }
   };
+
+  const handleTogglePreviewAudio = (track: any) => {
+    if (previewTrackId === track.id) {
+      if (previewAudio) {
+        previewAudio.pause();
+        setPreviewAudio(null);
+      }
+      setPreviewTrackId(null);
+    } else {
+      if (previewAudio) {
+        previewAudio.pause();
+      }
+      try {
+        const audio = new Audio(track.url);
+        audio.play().then(() => {
+          setPreviewAudio(audio);
+          setPreviewTrackId(track.id);
+        }).catch((err) => {
+          alert('ไม่สามารถเปิดเล่นไฟล์เสียงนี้ได้ กรุณาตรวจสอบ URL: ' + err.message);
+          setPreviewTrackId(null);
+          setPreviewAudio(null);
+        });
+        audio.onended = () => {
+          setPreviewTrackId(null);
+          setPreviewAudio(null);
+        };
+      } catch (err: any) {
+        alert('เกิดข้อผิดพลาดในการโหลดไฟล์เสียง: ' + err.message);
+      }
+    }
+  };
+
+  const handleSaveMusicTrack = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMusicLoading(true);
+    const res = await saveMusicTrackAction({
+      id: musicModal?.isNew ? undefined : musicModal?.id,
+      title: musicTitle,
+      artist: musicArtist,
+      url: musicUrl,
+      isActive: musicIsActive,
+      sortOrder: musicSortOrder,
+    });
+    setMusicLoading(false);
+
+    if (res.success) {
+      if (musicModal?.isNew) {
+        setMusicTracks([
+          ...musicTracks,
+          {
+            id: 'track-' + Date.now(),
+            title: musicTitle,
+            artist: musicArtist,
+            url: musicUrl,
+            isActive: musicIsActive,
+            sortOrder: musicSortOrder,
+          },
+        ]);
+      } else {
+        setMusicTracks(
+          musicTracks.map((m) =>
+            m.id === musicModal.id
+              ? { ...m, title: musicTitle, artist: musicArtist, url: musicUrl, isActive: musicIsActive, sortOrder: musicSortOrder }
+              : m
+          )
+        );
+      }
+      setMusicModal(null);
+    } else {
+      alert(res.error || 'บันทึกเพลงไม่สำเร็จ');
+    }
+  };
+
+  const handleDeleteMusicTrack = async (trackId: string, title: string) => {
+    if (!confirm(`ต้องการลบเพลง "${title}" ใช่หรือไม่?`)) return;
+    if (previewTrackId === trackId && previewAudio) {
+      previewAudio.pause();
+      setPreviewAudio(null);
+      setPreviewTrackId(null);
+    }
+    const res = await deleteMusicTrackAction(trackId);
+    if (res.success) {
+      setMusicTracks(musicTracks.filter((m) => m.id !== trackId));
+    } else {
+      alert(res.error || 'ไม่สามารถลบเพลงได้');
+    }
+  };
+
+  const handleToggleMusicTrack = async (trackId: string, current: boolean) => {
+    const res = await toggleMusicTrackAction(trackId, !current);
+    if (res.success) {
+      setMusicTracks(musicTracks.map((m) => (m.id === trackId ? { ...m, isActive: !current } : m)));
+    } else {
+      alert(res.error || 'ไม่สามารถเปลี่ยนสถานะเพลงได้');
+    }
+  };
+
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1498,7 +1619,145 @@ export function AdminClient({
         </div>
       )}
 
+      {/* TAB: MUSIC MANAGEMENT */}
+      {activeTab === 'MUSIC' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-[1.75rem] border border-[#E8DCCF] shadow-xs">
+            <div>
+              <h2 className="text-lg font-black text-[#5D4037] flex items-center gap-2">
+                <Music className="w-5 h-5 text-[#E5989B]" />
+                <span>จัดการเพลงบรรเลงคาเฟ่ (BGM)</span>
+              </h2>
+              <p className="text-xs text-[#8D6E63] mt-0.5 font-medium">
+                ปรับแต่งเพลงบรรเลงที่จะเปิดเล่นในเครื่องเล่นเพลงหน้าร้าน เพิ่มเพลงจากไฟล์เสียง mp3 หรือ audio stream ได้อิสระ
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setMusicModal({ isNew: true });
+                setMusicTitle('');
+                setMusicArtist('Miki Cafe Studio');
+                setMusicUrl('');
+                setMusicIsActive(true);
+                setMusicSortOrder(musicTracks.length);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] transition-all shadow-xs active:scale-95 flex-shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>เพิ่มเพลงใหม่</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {musicTracks.map((track) => {
+              const isCurrentlyPreviewing = previewTrackId === track.id;
+              return (
+                <div
+                  key={track.id}
+                  className="miki-card p-5 bg-white border border-[#E8DCCF] space-y-4 shadow-xs flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`w-10 h-10 rounded-2xl bg-[#FFF8F3] border border-[#FFD9CE] flex items-center justify-center text-[#E5989B] shadow-2xs ${
+                            isCurrentlyPreviewing ? 'animate-spin' : ''
+                          }`}
+                        >
+                          <Disc3 className="w-5 h-5 text-[#D97706]" />
+                        </div>
+                        <div>
+                          <h3 className="font-extrabold text-sm text-[#5D4037] line-clamp-1">{track.title}</h3>
+                          <p className="text-xs text-[#8D6E63]">{track.artist || 'Miki Cafe Studio'}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleToggleMusicTrack(track.id, track.isActive)}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors flex-shrink-0 ${
+                          track.isActive
+                            ? 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
+                            : 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
+                        }`}
+                      >
+                        {track.isActive ? 'เปิดใช้งาน' : 'ปิดการเล่น'}
+                      </button>
+                    </div>
+
+                    {/* Preview Play/Pause button */}
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePreviewAudio(track)}
+                      className={`w-full py-2 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-2xs active:scale-95 ${
+                        isCurrentlyPreviewing
+                          ? 'bg-[#D97706] text-white border-[#B45309]'
+                          : 'bg-[#FFF8F3] text-[#5D4037] border-[#FFD9CE] hover:bg-[#FFE8D6]'
+                      }`}
+                    >
+                      {isCurrentlyPreviewing ? (
+                        <>
+                          <Pause className="w-3.5 h-3.5" />
+                          <span>หยุดฟังตัวอย่าง</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 text-[#D97706]" />
+                          <span>กดฟังตัวอย่างเสียง (Audio Preview)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Audio URL snippet */}
+                    <div className="p-2.5 rounded-xl bg-[#FDFBF7] border border-[#E8DCCF] text-[11px] font-mono text-[#8D6E63] truncate">
+                      <span className="font-sans font-bold text-[#5D4037] block text-[10px]">ลิงก์ไฟล์เสียง:</span>
+                      <span className="truncate block" title={track.url}>{track.url}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-[#E8DCCF]">
+                    <span className="text-[10px] font-bold text-[#8D6E63]">
+                      ลำดับ: {track.sortOrder ?? 0}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setMusicModal(track);
+                          setMusicTitle(track.title);
+                          setMusicArtist(track.artist || 'Miki Cafe Studio');
+                          setMusicUrl(track.url);
+                          setMusicIsActive(track.isActive !== false);
+                          setMusicSortOrder(track.sortOrder ?? 0);
+                        }}
+                        className="p-1.5 rounded-full hover:bg-[#FFF8F3] text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+                        title="แก้ไขเพลง"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMusicTrack(track.id, track.title)}
+                        className="p-1.5 rounded-full hover:bg-[#FFF1F2] text-[#8D6E63] hover:text-[#E11D48] transition-colors"
+                        title="ลบเพลง"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {musicTracks.length === 0 && (
+              <div className="col-span-full text-center py-12 miki-card bg-white border border-[#E8DCCF] text-[#8D6E63] space-y-2">
+                <Music className="w-8 h-8 mx-auto text-[#FFB4A2]" />
+                <p className="font-bold text-sm">ยังไม่มีรายการเพลงในระบบ</p>
+                <p className="text-xs">กดปุ่ม "เพิ่มเพลงใหม่" เพื่อใส่เพลงบรรเลงคาเฟ่ที่คุณชื่นชอบ</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* TAB 7: STORE SETTINGS */}
+
       {activeTab === 'SETTINGS' && (
         <form onSubmit={handleSaveSettings} className="miki-card p-6 bg-white border border-[#E8DCCF] space-y-6">
           <div className="flex items-center justify-between border-b border-[#E8DCCF] pb-3">
@@ -2884,6 +3143,109 @@ export function AdminClient({
           </div>
         </div>
       )}
+
+      {/* MODAL: ADD / EDIT MUSIC TRACK */}
+      {musicModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Music className="w-5 h-5 text-[#E5989B]" />
+                <span>{musicModal.isNew ? 'เพิ่มเพลงใหม่' : `แก้ไขเพลง: ${musicTitle}`}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setMusicModal(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              <form onSubmit={handleSaveMusicTrack} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ชื่อเพลง (Song Title) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={musicTitle}
+                    onChange={(e) => setMusicTitle(e.target.value)}
+                    placeholder="เช่น Cozy Afternoon, Lo-fi Study Track"
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ศิลปิน / ช่อง (Artist)</label>
+                  <input
+                    type="text"
+                    value={musicArtist}
+                    onChange={(e) => setMusicArtist(e.target.value)}
+                    placeholder="เช่น Miki Cafe Studio, Pixabay Music"
+                    className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ลิงก์ไฟล์เสียง (Audio URL - mp3 / stream) *</label>
+                  <input
+                    type="url"
+                    required
+                    value={musicUrl}
+                    onChange={(e) => setMusicUrl(e.target.value)}
+                    placeholder="https://.../song.mp3 (ลิงก์ไฟล์เสียงตรง)"
+                    className="w-full miki-input text-xs font-mono"
+                  />
+                  <p className="text-[10px] text-[#8D6E63]">
+                    รองรับไฟล์เสียงตรง .mp3, .wav, .m4a หรือ Audio Stream URL ที่สามารถเปิดเล่นได้ในบราวเซอร์
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#5D4037]">ลำดับการเล่น (Sort Order)</label>
+                  <input
+                    type="number"
+                    value={musicSortOrder}
+                    onChange={(e) => setMusicSortOrder(parseInt(e.target.value) || 0)}
+                    className="w-full miki-input text-xs font-mono font-bold"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <label className="flex items-center gap-2 font-bold text-[#5D4037] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={musicIsActive}
+                      onChange={(e) => setMusicIsActive(e.target.checked)}
+                      className="rounded text-[#FFB4A2]"
+                    />
+                    <span>เปิดใช้งานเพลงนี้ในเครื่องเล่นเพลงหน้าร้าน</span>
+                  </label>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={musicLoading}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] transition-all shadow-xs active:scale-95"
+                  >
+                    {musicLoading ? 'กำลังบันทึก...' : 'บันทึกเพลง'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMusicModal(null)}
+                    className="flex-1 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* MODAL: EDIT SLOTS & PINS FOR EXISTING STOCK */}
       {editSlotsStock && (

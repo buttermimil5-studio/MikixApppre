@@ -7,10 +7,18 @@ import { Clock, MessageCircle, ShoppingBag, CheckCircle2, AlertCircle } from 'lu
 interface ProductCardProps {
   product: any;
   user: any;
+  storeSetting?: any;
+  bankAccounts?: any[];
   onBalanceUpdate?: (newBalance: number) => void;
 }
 
-export function ProductCard({ product, user, onBalanceUpdate }: ProductCardProps) {
+export function ProductCard({
+  product,
+  user,
+  storeSetting,
+  bankAccounts = [],
+  onBalanceUpdate,
+}: ProductCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const isAvailable = product.availableSlotsCount > 0;
@@ -126,6 +134,8 @@ export function ProductCard({ product, user, onBalanceUpdate }: ProductCardProps
       <ProductModal
         product={product}
         user={user}
+        storeSetting={storeSetting}
+        bankAccounts={bankAccounts}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onPurchaseSuccess={onBalanceUpdate}

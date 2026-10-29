@@ -2,7 +2,13 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { purchaseProductAction, requestOtpAction, PurchaseResult } from '@/lib/actions/purchaseActions';
+import {
+  purchaseProductAction,
+  requestOtpAction,
+  guestPurchaseWithSlipAction,
+  PurchaseResult,
+} from '@/lib/actions/purchaseActions';
+import { generatePromptPayPayload } from '@/lib/promptpay';
 import {
   X,
   Clock,
@@ -19,11 +25,18 @@ import {
   Monitor,
   ShieldCheck,
   Tv,
+  ArrowLeft,
+  Sparkles,
+  QrCode,
+  Upload,
+  Building,
 } from 'lucide-react';
 
 interface ProductModalProps {
   product: any;
   user: any;
+  storeSetting?: any;
+  bankAccounts?: any[];
   isOpen: boolean;
   onClose: () => void;
   onPurchaseSuccess?: (newBalance: number) => void;
@@ -32,6 +45,8 @@ interface ProductModalProps {
 export function ProductModal({
   product,
   user,
+  storeSetting,
+  bankAccounts = [],
   isOpen,
   onClose,
   onPurchaseSuccess,
@@ -43,8 +58,39 @@ export function ProductModal({
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
 
+  // Guest Direct Checkout States
+  const [isGuestMode, setIsGuestMode] = useState(false);
+  const [guestSlipFile, setGuestSlipFile] = useState<File | null>(null);
+  const [guestSlipPreview, setGuestSlipPreview] = useState<string | null>(null);
+  const [guestTransRef, setGuestTransRef] = useState('');
+  const [guestLoading, setGuestLoading] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [copiedBankInfo, setCopiedBankInfo] = useState(false);
+
   const isAgent = user?.role === 'AGENT' || user?.role === 'ADMIN';
   const effectivePrice = isAgent ? product.price : (product.retailPrice || product.price);
+  const retailPrice = product.retailPrice || product.price;
+
+  // Active bank calculation
+  const activeBank = bankAccounts.length > 0
+    ? (bankAccounts.find((b) => b.isPromptPay || b.promptPayNumber) || bankAccounts[0])
+    : null;
+
+  const promptPayTarget =
+    activeBank?.promptPayNumber ||
+    (activeBank?.isPromptPay ? activeBank?.accountNumber : null) ||
+    storeSetting?.promptPayNumber ||
+    '0899999999';
+
+  const bankName = activeBank ? activeBank.bankName : (storeSetting?.bankName || 'พร้อมเพย์ / ธนาคาร');
+  const accountName = activeBank ? activeBank.accountName : (storeSetting?.bankAccountName || 'มิคิ สโตร์');
+  const accountNumber = activeBank ? activeBank.accountNumber : (storeSetting?.bankAccountNumber || promptPayTarget);
+
+  // Generate PromptPay Payload & QR Code URL
+  const promptPayPayload = generatePromptPayPayload(promptPayTarget, retailPrice);
+  const promptPayQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+    promptPayPayload
+  )}`;
 
   if (!isOpen) return null;
 
@@ -53,6 +99,44 @@ export function ProductModal({
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
+
+  const handleGuestSlipChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setGuestSlipFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setGuestSlipPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleGuestPurchase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestSlipFile && !guestTransRef.trim()) {
+      setGuestError('กรุณาแนบรูปภาพสลิปการโอนเงินเพื่อตรวจสอบ');
+      return;
+    }
+
+    setGuestLoading(true);
+    setGuestError(null);
+
+    const formData = new FormData();
+    if (guestSlipFile) formData.append('slip', guestSlipFile);
+    if (guestTransRef.trim()) formData.append('transRef', guestTransRef.trim());
+
+    const res = await guestPurchaseWithSlipAction(product.id, formData);
+    setGuestLoading(false);
+
+    if (res.success && res.order) {
+      setOrderResult(res.order);
+      setIsGuestMode(false);
+    } else {
+      setGuestError(res.error || 'การสั่งซื้อไม่สำเร็จ กรุณาตรวจสอบสลิปและลองใหม่อีกครั้ง');
+    }
+  };
+
 
   const handleCopyCustomerCard = (data: {
     productName: string;
@@ -346,13 +430,34 @@ export function ProductModal({
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <Link
-                  href="/orders"
-                  className="w-full py-3 rounded-full text-center text-xs font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 transition-all shadow-xs"
-                >
-                  ดูรายการในประวัติการซื้อ
-                </Link>
+              {orderResult.isGuest && (
+                <div className="p-3.5 rounded-2xl bg-[#FFF0EB] border border-[#FFCCBC] space-y-1 text-center">
+                  <p className="text-xs font-bold text-[#D84315] flex items-center justify-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>คำเตือน: โปรดกดคัดลอกข้อมูลหรือแคปหน้าจอไว้ทันที</span>
+                  </p>
+                  <p className="text-[11px] text-[#8D6E63]">
+                    เนื่องจากท่านสั่งซื้อแบบลูกค้าทั่วไป (ไม่ได้เข้าสู่ระบบ) ระบบจะไม่สามารถแสดงรหัสนี้ซ้ำได้หลังจากปิดหน้าต่างนี้
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                {orderResult.isGuest ? (
+                  <Link
+                    href="/register"
+                    className="w-full py-3 rounded-full text-center text-xs font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 transition-all shadow-xs"
+                  >
+                    สมัครตัวแทนเพื่อบันทึกประวัติ & รับราคาส่ง
+                  </Link>
+                ) : (
+                  <Link
+                    href="/orders"
+                    className="w-full py-3 rounded-full text-center text-xs font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 transition-all shadow-xs"
+                  >
+                    ดูรายการในประวัติการซื้อ
+                  </Link>
+                )}
                 <button
                   onClick={onClose}
                   className="w-full py-3 rounded-full text-center text-xs font-bold bg-white text-[#5D4037] border border-[#E8DCCF] hover:bg-[#FFF8F3] active:scale-95 transition-all"
@@ -361,9 +466,183 @@ export function ProductModal({
                 </button>
               </div>
             </div>
+          ) : isGuestMode ? (
+            /* Guest Checkout View: PromptPay QR + Slip Upload */
+            <div className="space-y-4">
+              {/* Header with Back button */}
+              <div className="flex items-center justify-between pb-2 border-b border-[#F5EBE1]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsGuestMode(false);
+                    setGuestError(null);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-bold text-[#8D6E63] hover:text-[#5D4037] px-2.5 py-1 rounded-full hover:bg-[#FFF8F3] transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>ย้อนกลับ</span>
+                </button>
+                <span className="text-xs font-bold text-[#E5989B] bg-[#FFF0EB] px-3 py-0.5 rounded-full border border-[#FFD9CE]">
+                  ชำระเงินราคาปลีก (ไม่ต้องสมัคร)
+                </span>
+              </div>
+
+              {/* Product & Price Summary Card */}
+              <div className="p-3.5 rounded-2xl bg-[#FFFDF7] border border-[#FFD9CE] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-[#E8DCCF] flex-shrink-0 bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-xs sm:text-sm text-[#5D4037] line-clamp-1">{product.name}</h4>
+                    <span className="text-[11px] text-[#8D6E63] font-medium">ระยะเวลา {product.durationDays} วัน</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-[#8D6E63] block">ยอดที่ต้องชำระ:</span>
+                  <span className="text-base sm:text-lg font-black text-[#E5989B]">
+                    {retailPrice.toLocaleString()} ฿
+                  </span>
+                </div>
+              </div>
+
+              {/* QR PromptPay & Bank Info Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-b from-[#FFFDF5] to-[#FFF9F5] border border-[#FFD9CE] space-y-3 shadow-2xs">
+                <div className="text-center space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF0EB] text-[#E5989B] text-xs font-bold border border-[#FFD9CE]">
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>สแกน QR PromptPay ยอด {retailPrice.toLocaleString()} บาท</span>
+                  </div>
+                  <p className="text-[11px] text-[#8D6E63]">
+                    เปิดแอปธนาคารแล้วสแกน QR Code ด้านล่าง ยอดเงินจะถูกระบุอัตโนมัติ
+                  </p>
+                </div>
+
+                {/* QR Code Image */}
+                <div className="flex justify-center py-1">
+                  <div className="p-2.5 bg-white rounded-2xl border border-[#FFD9CE] shadow-sm inline-block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={promptPayQrUrl}
+                      alt="PromptPay QR"
+                      className="w-40 h-40 sm:w-44 sm:h-44 object-contain mx-auto"
+                    />
+                  </div>
+                </div>
+
+                {/* Bank Account Details with Copy */}
+                <div className="p-3 bg-white rounded-xl border border-[#E8DCCF] space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#8D6E63]">ธนาคาร / ช่องทาง:</span>
+                    <span className="font-bold text-[#5D4037]">{bankName}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#8D6E63]">ชื่อบัญชี:</span>
+                    <span className="font-bold text-[#5D4037]">{accountName}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-[#F5EBE1]">
+                    <span className="text-[#8D6E63]">เลขบัญชี / พร้อมเพย์:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-[#E5989B] select-all">{accountNumber}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(accountNumber.replace(/-/g, ''));
+                          setCopiedBankInfo(true);
+                          setTimeout(() => setCopiedBankInfo(false), 2000);
+                        }}
+                        className="p-1 rounded-md hover:bg-[#FFF0EB] text-[#E5989B] transition-colors"
+                        title="คัดลอกเลขบัญชี"
+                      >
+                        {copiedBankInfo ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form: Upload Slip & Submit */}
+              <form onSubmit={handleGuestPurchase} className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#5D4037] flex items-center justify-between">
+                    <span>แนบสลิปโอนเงิน (ระบบตรวจอัตโนมัติ) *</span>
+                    <span className="text-[10px] text-[#2E7D32] font-semibold">ตรวจไวใน 3 วินาที</span>
+                  </label>
+                  
+                  <label className="flex flex-col items-center justify-center w-full p-4 border-2 border-dashed border-[#FFD9CE] rounded-2xl cursor-pointer bg-[#FFFDF7] hover:bg-[#FFF5F2] transition-colors">
+                    {guestSlipPreview ? (
+                      <div className="space-y-2 text-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={guestSlipPreview}
+                          alt="Preview"
+                          className="max-h-36 mx-auto rounded-lg object-contain border border-[#FFD9CE]"
+                        />
+                        <span className="text-[11px] font-bold text-[#E5989B] block">คลิกเพื่อเปลี่ยนรูปสลิป</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-2 text-center space-y-1">
+                        <div className="w-9 h-9 rounded-full bg-[#FFF0EB] flex items-center justify-center text-[#E5989B] mb-1">
+                          <Upload className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs font-bold text-[#5D4037]">แตะเพื่ออัปโหลดรูปภาพสลิป</p>
+                        <p className="text-[10px] text-[#8D6E63]">รองรับไฟล์ JPG, PNG หรือ WebP จากแอปธนาคาร</p>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleGuestSlipChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Optional transRef */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-[#8D6E63]">
+                    รหัสอ้างอิงสลิป (ระบุหากสลิปไม่มี QR Code หรือระบบอ่านไม่ผ่าน)
+                  </label>
+                  <input
+                    type="text"
+                    value={guestTransRef}
+                    onChange={(e) => setGuestTransRef(e.target.value)}
+                    placeholder="เช่น 2024102912345678"
+                    className="w-full miki-input text-xs font-mono"
+                  />
+                </div>
+
+                {/* Error Banner */}
+                {guestError && (
+                  <div className="p-3 rounded-2xl bg-[#FFF0EB] border border-[#FFCCBC] flex items-center gap-2 text-xs text-[#D84315] font-bold">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{guestError}</span>
+                  </div>
+                )}
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={guestLoading || (!guestSlipFile && !guestTransRef.trim())}
+                  className="w-full py-3.5 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
+                  {guestLoading ? (
+                    <span>กำลังตรวจสอบสลิปและส่งมอบบัญชี...</span>
+                  ) : (
+                    <span>ยืนยันและตรวจสอบสลิป (รับบัญชีทันที)</span>
+                  )}
+                </button>
+
+                <p className="text-center text-[10px] text-[#8D6E63]">
+                  ระบบจะตรวจสอบยอดเงิน {retailPrice.toLocaleString()} บาท และส่งมอบข้อมูลเข้าใช้งานให้ทันทีหลังสลิปผ่าน
+                </p>
+              </form>
+            </div>
           ) : (
             /* Product Details & Purchase Trigger View */
             <>
+
               {/* Product Info Header */}
               <div className="flex gap-4 items-center">
                 <div className="w-20 h-20 rounded-2xl overflow-hidden border border-[#E8DCCF] flex-shrink-0 bg-[#FFF8F3]">
@@ -575,9 +854,23 @@ export function ProductModal({
                   </>
                 ) : (
                   <div className="space-y-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsGuestMode(true)}
+                      disabled={product.availableSlotsCount <= 0}
+                      className="w-full py-3.5 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <Sparkles className="w-4 h-4 text-[#D97706]" />
+                      <span>
+                        {product.availableSlotsCount <= 0
+                          ? 'สินค้าหมดชั่วคราว'
+                          : `⚡ ซื้อด่วนในราคาปกติ (${retailPrice.toLocaleString()} ฿) ไม่ต้องสมัครสมาชิก`}
+                      </span>
+                    </button>
+
                     <Link
                       href="/register"
-                      className="w-full py-3.5 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-[#4E342E] hover:bg-[#FFA28D] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                      className="w-full py-2.5 rounded-full text-xs font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] transition-all flex items-center justify-center gap-2 shadow-2xs"
                     >
                       <UserCheck className="w-4 h-4" />
                       <span>สมัครตัวแทนเพื่อรับราคาส่ง ({product.price.toLocaleString()} ฿)</span>
@@ -585,9 +878,9 @@ export function ProductModal({
 
                     <Link
                       href="/login?redirect=/"
-                      className="w-full py-2.5 rounded-full text-xs font-bold bg-white text-[#6D4C41] border border-[#E8DCCF] hover:bg-[#FFF8F3] transition-all flex items-center justify-center gap-2"
+                      className="w-full py-2 text-center text-[11px] font-bold text-[#8D6E63] hover:text-[#5D4037] transition-colors block"
                     >
-                      <span>เข้าสู่ระบบเพื่อซื้อสินค้า (ราคาปกติ {(product.retailPrice || product.price).toLocaleString()} ฿)</span>
+                      มีบัญชีตัวแทนอยู่แล้ว? เข้าสู่ระบบ
                     </Link>
                   </div>
                 )}
