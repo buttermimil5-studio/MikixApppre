@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { registerAction } from '@/lib/actions/authActions';
 import { AvatarWithFrame } from '@/components/AvatarWithFrame';
+import { RegisterCatModal } from '@/components/RegisterCatModal';
 import { Sparkles, Key, User as UserIcon, Share2, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -15,12 +16,18 @@ export default function RegisterPage() {
   const [profileName, setProfileName] = useState('');
   const [salesChannel, setSalesChannel] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [registeredName, setRegisteredName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setLoading(true);
+    setRegisteredName(profileName.trim() || username.trim());
+    setIsSuccess(false);
+    setShowModal(true);
 
     const formData = new FormData();
     formData.append('username', username);
@@ -32,15 +39,31 @@ export default function RegisterPage() {
     setLoading(false);
 
     if (res.success) {
-      router.push('/');
-      router.refresh();
+      if (res.user?.profileName) {
+        setRegisteredName(res.user.profileName);
+      }
+      setIsSuccess(true);
     } else {
+      setShowModal(false);
       setError(res.error || 'สมัครสมาชิกไม่สำเร็จ');
     }
   };
 
+  const handleProceed = () => {
+    router.push('/');
+    router.refresh();
+  };
+
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
+      {/* Animated Cat Modal for Loading & Success */}
+      <RegisterCatModal
+        isOpen={showModal}
+        isSuccess={isSuccess}
+        memberName={registeredName}
+        onProceed={handleProceed}
+      />
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md space-y-3 text-center">
         <Link href="/" className="inline-block">
           <AvatarWithFrame size="lg" />
@@ -125,7 +148,7 @@ export default function RegisterPage() {
               className="w-full py-3 rounded-full text-xs sm:text-sm font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-xs"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{loading ? 'กำลังลงทะเบียน...' : 'ยืนยันการสมัครสมาชิก'}</span>
+              <span>{loading ? '🐾 น้องแมวกำลังสมัครสมาชิกให้น้า...' : 'ยืนยันการสมัครสมาชิก'}</span>
             </button>
           </form>
 

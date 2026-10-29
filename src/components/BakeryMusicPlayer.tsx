@@ -1,9 +1,29 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Music, Play, Pause, Volume2, VolumeX, Disc3, ChevronDown, ChevronUp, SkipForward, SkipBack } from 'lucide-react';
+import {
+  Music,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Disc3,
+  ChevronDown,
+  ChevronUp,
+  SkipForward,
+  SkipBack,
+  Video,
+} from 'lucide-react';
 import { playBubblePop } from '@/lib/soundEffects';
 import { getActiveMusicTracks } from '@/lib/actions/adminActions';
+import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
 
 // High-availability cozy cafe acoustic lofi tracks (fallback)
 const DEFAULT_PLAYLIST = [
@@ -26,37 +46,205 @@ export function BakeryMusicPlayer() {
   const [isMuted, setIsMuted] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [trackIndex, setTrackIndex] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const ytReadyRef = useRef<boolean>(false);
+
+  // Load playlist from database
   useEffect(() => {
-    getActiveMusicTracks().then((tracks) => {
-      if (tracks && tracks.length > 0) {
-        setPlaylist(tracks);
-      }
-    }).catch((err) => {
-      console.debug('Failed to load dynamic tracks, using fallback', err);
-    });
+    getActiveMusicTracks()
+      .then((tracks) => {
+        if (tracks && tracks.length > 0) {
+          setPlaylist(tracks);
+        }
+      })
+      .catch((err) => {
+        console.debug('Failed to load dynamic tracks, using fallback', err);
+      });
   }, []);
 
+  const currentTrack = playlist[trackIndex % playlist.length] || DEFAULT_PLAYLIST[0];
+  const isCurrentYT = isYouTubeUrl(currentTrack?.url);
+  const currentYtId = extractYouTubeVideoId(currentTrack?.url);
+
+  // Initialize YouTube Iframe API
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let pollInterval: any;
+
+    const setupPlayer = () => {
+      if (window.YT && window.YT.Player && !ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current = new window.YT.Player('bakery-yt-player-iframe', {
+            height: '2',
+            width: '2',
+            videoId: currentYtId || 'jfKfPFiQCEY',
+            playerVars: {
+              autoplay: 0,
+              controls: 0,
+              disablekb: 1,
+              fs: 0,
+              modestbranding: 1,
+              rel: 0,
+              playsinline: 1,
+            },
+            events: {
+              onReady: (event: any) => {
+                ytReadyRef.current = true;
+                if (isMuted) {
+                  event.target.mute();
+                } else {
+                  event.target.unMute();
+                  event.target.setVolume(volume * 100);
+                }
+              },
+              onStateChange: (event: any) => {
+                // 0 = ENDED
+                if (event.data === 0) {
+                  setTrackIndex((prev) => (prev + 1) % playlist.length);
+                } else if (event.data === 1) {
+                  setIsPlaying(true);
+                } else if (event.data === 2) {
+                  setIsPlaying(false);
+                }
+              },
+              onError: (err: any) => {
+                console.warn('YouTube Player notice, advancing track:', err);
+                setTrackIndex((prev) => (prev + 1) % playlist.length);
+              },
+            },
+          });
+        } catch (e) {
+          console.debug('YouTube player init delayed', e);
+        }
+      }
+    };
+
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    pollInterval = setInterval(() => {
+      if (window.YT && window.YT.Player) {
+        setupPlayer();
+        clearInterval(pollInterval);
+      }
+    }, 250);
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, []);
+
+  // Sync volume / mute across both players
+  useEffect(() => {
+    const targetVol = isMuted ? 0 : volume;
     if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.volume = targetVol;
+    }
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.setVolume === 'function') {
+      try {
+        if (isMuted) {
+          ytPlayerRef.current.mute?.();
+        } else {
+          ytPlayerRef.current.unMute?.();
+          ytPlayerRef.current.setVolume?.(volume * 100);
+        }
+      } catch (err) {
+        console.debug('YT volume error', err);
+      }
     }
   }, [volume, isMuted]);
 
+  // Handle track index change
+  useEffect(() => {
+    if (!currentTrack) return;
+
+    if (isCurrentYT && currentYtId) {
+      // Pause HTML audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      // Load YouTube video
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+        try {
+          if (isPlaying) {
+            ytPlayerRef.current.loadVideoById(currentYtId);
+            ytPlayerRef.current.playVideo();
+          } else {
+            ytPlayerRef.current.cueVideoById(currentYtId);
+          }
+        } catch (err) {
+          console.debug('YT load video error', err);
+        }
+      }
+    } else {
+      // Pause YouTube player
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.pauseVideo === 'function') {
+        try {
+          ytPlayerRef.current.pauseVideo();
+        } catch (err) {
+          console.debug('YT pause error', err);
+        }
+      }
+      // Set & play HTML5 audio
+      if (audioRef.current) {
+        audioRef.current.src = currentTrack.url;
+        if (isPlaying) {
+          audioRef.current.play().catch(console.debug);
+        }
+      }
+    }
+  }, [trackIndex, playlist]);
+
   const togglePlay = () => {
     playBubblePop(600);
-    if (!audioRef.current) return;
 
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play().then(() => {
+    if (isCurrentYT && currentYtId) {
+      if (isPlaying) {
+        try {
+          ytPlayerRef.current?.pauseVideo?.();
+        } catch (e) {
+          console.debug(e);
+        }
+        setIsPlaying(false);
+      } else {
+        if (audioRef.current) audioRef.current.pause();
+        try {
+          if (ytPlayerRef.current?.loadVideoById) {
+            ytPlayerRef.current.loadVideoById(currentYtId);
+            ytPlayerRef.current.playVideo?.();
+          }
+        } catch (e) {
+          console.debug(e);
+        }
         setIsPlaying(true);
-      }).catch((err) => {
-        console.debug('Audio play deferred', err);
-      });
+      }
+    } else {
+      if (!audioRef.current) return;
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        try {
+          ytPlayerRef.current?.pauseVideo?.();
+        } catch (e) {
+          console.debug(e);
+        }
+        audioRef.current
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((err) => {
+            console.debug('Audio play deferred', err);
+          });
+      }
     }
   };
 
@@ -67,34 +255,32 @@ export function BakeryMusicPlayer() {
   const handleNextTrack = () => {
     playBubblePop();
     setTrackIndex((prev) => (prev + 1) % playlist.length);
-    if (isPlaying && audioRef.current) {
-      setTimeout(() => {
-        audioRef.current?.play().catch(console.debug);
-      }, 100);
-    }
   };
 
   const handlePrevTrack = () => {
     playBubblePop();
     setTrackIndex((prev) => (prev - 1 + playlist.length) % playlist.length);
-    if (isPlaying && audioRef.current) {
-      setTimeout(() => {
-        audioRef.current?.play().catch(console.debug);
-      }, 100);
-    }
   };
-
-  const currentTrack = playlist[trackIndex % playlist.length] || DEFAULT_PLAYLIST[0];
 
   return (
     <div className="fixed bottom-20 sm:bottom-6 right-4 z-40">
+      {/* HTML5 Audio Player for MP3 files */}
       <audio
         ref={audioRef}
-        src={currentTrack.url}
-        loop={playlist.length === 1}
+        src={isCurrentYT ? undefined : currentTrack.url}
+        loop={playlist.length === 1 && !isCurrentYT}
         onEnded={handleEnded}
         preload="none"
       />
+
+      {/* Hidden YouTube background audio iframe */}
+      <div
+        className="fixed bottom-0 right-0 w-2 h-2 opacity-[0.001] pointer-events-none z-[-1] overflow-hidden"
+        aria-hidden="true"
+      >
+        <div id="bakery-yt-player-iframe" />
+      </div>
+
 
 
       {/* Expanded Control Box */}
@@ -119,7 +305,15 @@ export function BakeryMusicPlayer() {
 
           <div className="py-2 flex items-center justify-between">
             <div className="truncate flex-1 mr-2">
-              <p className="text-xs font-medium truncate text-[#5D4037]">{currentTrack.title}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-medium truncate text-[#5D4037]">{currentTrack.title}</p>
+                {isCurrentYT && (
+                  <span className="text-[9px] font-extrabold text-red-600 bg-red-50 px-1.5 py-0.2 rounded-md border border-red-200 flex-shrink-0 flex items-center gap-0.5">
+                    <Video className="w-2.5 h-2.5" />
+                    <span>YouTube</span>
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-[#8D6E63]">{currentTrack.artist}</p>
             </div>
             {playlist.length > 1 && (
@@ -201,7 +395,11 @@ export function BakeryMusicPlayer() {
           }}
           className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium hover:bg-[#5D4037]/5 rounded-full transition-colors"
         >
-          <Music className={`w-3.5 h-3.5 ${isPlaying ? 'text-[#D97706]' : 'text-[#8D6E63]'}`} />
+          {isCurrentYT ? (
+            <Video className={`w-3.5 h-3.5 ${isPlaying ? 'text-[#DC2626]' : 'text-[#8D6E63]'}`} />
+          ) : (
+            <Music className={`w-3.5 h-3.5 ${isPlaying ? 'text-[#D97706]' : 'text-[#8D6E63]'}`} />
+          )}
           <span className="hidden sm:inline text-xs">
             {isPlaying ? 'กำลังเล่นเพลง' : 'เปิดเพลง'}
           </span>

@@ -57,7 +57,9 @@ import {
   Play,
   Pause,
   Volume2,
+  Video,
 } from 'lucide-react';
+import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
 
 interface AdminClientProps {
   initialStats: any;
@@ -655,23 +657,29 @@ export function AdminClient({
     } else {
       if (previewAudio) {
         previewAudio.pause();
+        setPreviewAudio(null);
       }
-      try {
-        const audio = new Audio(track.url);
-        audio.play().then(() => {
-          setPreviewAudio(audio);
-          setPreviewTrackId(track.id);
-        }).catch((err) => {
-          alert('ไม่สามารถเปิดเล่นไฟล์เสียงนี้ได้ กรุณาตรวจสอบ URL: ' + err.message);
-          setPreviewTrackId(null);
-          setPreviewAudio(null);
-        });
-        audio.onended = () => {
-          setPreviewTrackId(null);
-          setPreviewAudio(null);
-        };
-      } catch (err: any) {
-        alert('เกิดข้อผิดพลาดในการโหลดไฟล์เสียง: ' + err.message);
+      if (isYouTubeUrl(track.url)) {
+        // Toggle inline YouTube preview
+        setPreviewTrackId(track.id);
+      } else {
+        try {
+          const audio = new Audio(track.url);
+          audio.play().then(() => {
+            setPreviewAudio(audio);
+            setPreviewTrackId(track.id);
+          }).catch((err) => {
+            alert('ไม่สามารถเปิดเล่นไฟล์เสียงนี้ได้ กรุณาตรวจสอบ URL: ' + err.message);
+            setPreviewTrackId(null);
+            setPreviewAudio(null);
+          });
+          audio.onended = () => {
+            setPreviewTrackId(null);
+            setPreviewAudio(null);
+          };
+        } catch (err: any) {
+          alert('เกิดข้อผิดพลาดในการโหลดไฟล์เสียง: ' + err.message);
+        }
       }
     }
   };
@@ -1651,6 +1659,8 @@ export function AdminClient({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {musicTracks.map((track) => {
               const isCurrentlyPreviewing = previewTrackId === track.id;
+              const isYT = isYouTubeUrl(track.url);
+              const ytVideoId = extractYouTubeVideoId(track.url);
               return (
                 <div
                   key={track.id}
@@ -1667,7 +1677,19 @@ export function AdminClient({
                           <Disc3 className="w-5 h-5 text-[#D97706]" />
                         </div>
                         <div>
-                          <h3 className="font-extrabold text-sm text-[#5D4037] line-clamp-1">{track.title}</h3>
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-extrabold text-sm text-[#5D4037] line-clamp-1">{track.title}</h3>
+                            {isYT ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA] flex items-center gap-0.5 flex-shrink-0">
+                                <Video className="w-2.5 h-2.5" />
+                                <span>YouTube</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] flex-shrink-0">
+                                MP3
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-[#8D6E63]">{track.artist || 'Miki Cafe Studio'}</p>
                         </div>
                       </div>
@@ -1689,26 +1711,47 @@ export function AdminClient({
                       onClick={() => handleTogglePreviewAudio(track)}
                       className={`w-full py-2 px-3 rounded-xl border flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-2xs active:scale-95 ${
                         isCurrentlyPreviewing
-                          ? 'bg-[#D97706] text-white border-[#B45309]'
+                          ? isYT
+                            ? 'bg-[#DC2626] text-white border-[#B91C1C]'
+                            : 'bg-[#D97706] text-white border-[#B45309]'
                           : 'bg-[#FFF8F3] text-[#5D4037] border-[#FFD9CE] hover:bg-[#FFE8D6]'
                       }`}
                     >
                       {isCurrentlyPreviewing ? (
                         <>
                           <Pause className="w-3.5 h-3.5" />
-                          <span>หยุดฟังตัวอย่าง</span>
+                          <span>{isYT ? 'ปิดตัวอย่าง YouTube' : 'หยุดฟังตัวอย่าง'}</span>
                         </>
                       ) : (
                         <>
-                          <Play className="w-3.5 h-3.5 text-[#D97706]" />
-                          <span>กดฟังตัวอย่างเสียง (Audio Preview)</span>
+                          {isYT ? (
+                            <Video className="w-3.5 h-3.5 text-[#DC2626]" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5 text-[#D97706]" />
+                          )}
+                          <span>{isYT ? 'กดดูตัวอย่าง YouTube (Video & Sound)' : 'กดฟังตัวอย่างเสียง (Audio Preview)'}</span>
                         </>
                       )}
                     </button>
 
+                    {/* Inline YouTube preview player */}
+                    {isYT && isCurrentlyPreviewing && ytVideoId && (
+                      <div className="relative aspect-video rounded-xl overflow-hidden border border-[#FFD9CE] shadow-sm bg-black animate-in fade-in duration-200">
+                        <iframe
+                          src={`https://www.youtube-nocookie.com/embed/${ytVideoId}?autoplay=1&enablejsapi=1`}
+                          title={track.title}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="w-full h-full border-0"
+                        />
+                      </div>
+                    )}
+
                     {/* Audio URL snippet */}
                     <div className="p-2.5 rounded-xl bg-[#FDFBF7] border border-[#E8DCCF] text-[11px] font-mono text-[#8D6E63] truncate">
-                      <span className="font-sans font-bold text-[#5D4037] block text-[10px]">ลิงก์ไฟล์เสียง:</span>
+                      <span className="font-sans font-bold text-[#5D4037] block text-[10px]">
+                        {isYT ? 'ลิงก์ YouTube:' : 'ลิงก์ไฟล์เสียง:'}
+                      </span>
                       <span className="truncate block" title={track.url}>{track.url}</span>
                     </div>
                   </div>
@@ -3188,18 +3231,27 @@ export function AdminClient({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">ลิงก์ไฟล์เสียง (Audio URL - mp3 / stream) *</label>
+                  <label className="text-xs font-bold text-[#5D4037]">ลิงก์เพลง (วางลิงก์ YouTube หรือไฟล์ MP3) *</label>
                   <input
-                    type="url"
+                    type="text"
                     required
                     value={musicUrl}
                     onChange={(e) => setMusicUrl(e.target.value)}
-                    placeholder="https://.../song.mp3 (ลิงก์ไฟล์เสียงตรง)"
+                    placeholder="วางลิงก์ YouTube (เช่น https://youtu.be/... หรือ https://www.youtube.com/watch?v=...) หรือไฟล์ MP3"
                     className="w-full miki-input text-xs font-mono"
                   />
-                  <p className="text-[10px] text-[#8D6E63]">
-                    รองรับไฟล์เสียงตรง .mp3, .wav, .m4a หรือ Audio Stream URL ที่สามารถเปิดเล่นได้ในบราวเซอร์
-                  </p>
+                  {isYouTubeUrl(musicUrl) ? (
+                    <div className="p-2.5 rounded-xl bg-[#FEF2F2] border border-[#FECACA] flex items-center gap-2 text-xs font-bold text-[#DC2626]">
+                      <Video className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        ตรวจพบวิดีโอ YouTube (ID: {extractYouTubeVideoId(musicUrl)}) • ระบบจะเล่นเสียงให้อัตโนมัติ
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-[#8D6E63]">
+                      รองรับลิงก์ YouTube ทุกรูปแบบ (วิดีโอเพลง, ช่อง Live 24 ชม., Shorts) หรือลิงก์ไฟล์เสียงตรง .mp3
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
