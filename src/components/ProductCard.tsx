@@ -51,6 +51,15 @@ export function ProductCard({
                 {product.durationDays} วัน
               </span>
             </div>
+
+            {/* Sharing Type Badge (e.g. หาร 4 จอไม่ชน, หาร 5 จอชน) */}
+            {product.sharingTypeNote && (
+              <div className="absolute bottom-2.5 left-2.5">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#5D4037]/90 text-[#FFF8F3] backdrop-blur-xs border border-white/20 shadow-xs">
+                  {product.sharingTypeNote}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Product Name */}

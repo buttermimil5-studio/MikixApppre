@@ -52,6 +52,7 @@ model Product {
   cutoffType   String         @default("ROUND_UP_HOUR") // ROUND_UP_HOUR, MIDNIGHT, EXACT_TIME
   hasProfilePin Boolean       @default(false)
   defaultSlotCount Int        @default(1)
+  sharingTypeNote String?     // ข้อความประเภทการหาร เช่น "หาร 4 จอไม่ชน", "หาร 5 จอชน"
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

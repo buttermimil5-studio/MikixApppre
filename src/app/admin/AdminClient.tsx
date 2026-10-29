@@ -176,6 +176,7 @@ export function AdminClient({
   const [prodCutoffType, setProdCutoffType] = useState<string>('ROUND_UP_HOUR');
   const [prodHasProfilePin, setProdHasProfilePin] = useState(false);
   const [prodDefaultSlotCount, setProdDefaultSlotCount] = useState<number | string>(1);
+  const [prodSharingTypeNote, setProdSharingTypeNote] = useState('');
   const [prodLoading, setProdLoading] = useState(false);
 
   // Bank Account Modal
@@ -458,6 +459,7 @@ export function AdminClient({
       cutoffType: prodCutoffType || 'ROUND_UP_HOUR',
       hasProfilePin: prodHasProfilePin,
       defaultSlotCount: Number(prodDefaultSlotCount) || 1,
+      sharingTypeNote: prodSharingTypeNote,
       isActive: editProductModal ? editProductModal.isActive : true,
     });
     setProdLoading(false);
@@ -1277,6 +1279,7 @@ export function AdminClient({
                 setProdCutoffType('ROUND_UP_HOUR');
                 setProdHasProfilePin(false);
                 setProdDefaultSlotCount(1);
+                setProdSharingTypeNote('');
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
             >
@@ -1318,6 +1321,11 @@ export function AdminClient({
                           เต็มสิทธิ์ (1 จอ)
                         </span>
                       )}
+                      {p.sharingTypeNote && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF8F3] text-[#D84315] border border-[#FFD9CE]">
+                          {p.sharingTypeNote}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1351,6 +1359,7 @@ export function AdminClient({
                         setProdCutoffType(p.cutoffType || 'ROUND_UP_HOUR');
                         setProdHasProfilePin(p.hasProfilePin ?? false);
                         setProdDefaultSlotCount(p.defaultSlotCount ?? 1);
+                        setProdSharingTypeNote(p.sharingTypeNote || '');
                       }}
                       className="text-xs font-bold text-[#FFB4A2] hover:underline"
                     >
@@ -2713,6 +2722,50 @@ export function AdminClient({
                       }}
                       className="w-full miki-input text-xs font-bold"
                     />
+                  </div>
+
+                  <div className="space-y-1.5 pt-2 border-t border-[#FFD9CE]/60">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-[#8D6E63]">
+                        ข้อความประเภทการหาร (แสดงที่หน้าลูกค้าซื้อ)
+                      </label>
+                      <span className="text-[10px] text-[#A1887F]">เว้นว่างได้</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={prodSharingTypeNote}
+                      onChange={(e) => setProdSharingTypeNote(e.target.value)}
+                      placeholder="เช่น หาร 4 จอไม่ชน, หาร 5 จอชน, จอไม่ชน (ส่วนตัว)"
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <span className="text-[10px] text-[#A1887F]">เลือกข้อความด่วน:</span>
+                      {[
+                        'หาร 4 จอไม่ชน',
+                        'หาร 5 จอชน',
+                        'จอไม่ชน 100%',
+                        'จอชน (หารเกิน)',
+                        'แอคเดี่ยวส่วนตัว',
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setProdSharingTypeNote(preset)}
+                          className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white hover:bg-[#FFE8D6] text-[#6D4C41] border border-[#FFD9CE] transition-colors"
+                        >
+                          + {preset}
+                        </button>
+                      ))}
+                      {prodSharingTypeNote && (
+                        <button
+                          type="button"
+                          onClick={() => setProdSharingTypeNote('')}
+                          className="text-[10px] text-[#E11D48] hover:underline ml-1"
+                        >
+                          ล้างข้อความ
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 

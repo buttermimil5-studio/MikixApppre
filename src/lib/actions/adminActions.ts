@@ -487,6 +487,7 @@ export async function saveProductAction(data: {
   cutoffType?: string;
   hasProfilePin?: boolean;
   defaultSlotCount?: number;
+  sharingTypeNote?: string | null;
   isActive: boolean;
 }) {
   const admin = await requireAdmin();
@@ -505,6 +506,7 @@ export async function saveProductAction(data: {
     cutoffType: data.cutoffType || 'ROUND_UP_HOUR',
     hasProfilePin: data.hasProfilePin ?? false,
     defaultSlotCount: data.defaultSlotCount ?? 1,
+    sharingTypeNote: data.sharingTypeNote?.trim() || null,
     isActive: data.isActive,
   };
 

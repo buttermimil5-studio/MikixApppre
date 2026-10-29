@@ -98,6 +98,7 @@ export default async function HomePage() {
       lineOaUrl: p.lineOaUrl,
       hasProfilePin: p.hasProfilePin,
       defaultSlotCount: p.defaultSlotCount,
+      sharingTypeNote: p.sharingTypeNote,
       categoryId: p.categoryId,
       category: p.category,
       availableSlotsCount,
