@@ -17,6 +17,7 @@ import {
   ChevronUp,
   ShoppingBag,
   Monitor,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface OrdersClientProps {
@@ -40,10 +41,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
     const text = [
       `[ ข้อมูลเข้าใช้งานแอปพรีเมียม - ${order.productName} ]`,
       order.orderNumber ? `เลขออเดอร์: ${order.orderNumber}` : '',
-      `อีเมล: ${order.email}`,
+      order.email && !order.email.includes('@') && /^[0-9+\s-]+$/.test(order.email)
+        ? `เบอร์โทรศัพท์: ${order.email}`
+        : `อีเมล: ${order.email}`,
       `รหัสผ่าน: ${order.password}`,
       `จอ / โปรไฟล์ที่ได้รับ: ${order.slotName}`,
       order.slotPin ? `รหัส PIN ประจำจอ: ${order.slotPin}` : 'รหัส PIN: ไม่ต้องใช้ PIN (เข้าใช้งานได้ทันที)',
+      order.hasAddon ? `บริการเสริม: ${order.addonName || 'รับประกันเคลม'} (คุ้มครองเรียบร้อย)` : '',
       order.expiresAt ? `วันหมดอายุ: ${new Date(order.expiresAt).toLocaleString('th-TH')}` : '',
       '',
       `[ กฎและข้อกำหนดการใช้งาน ]`,
@@ -185,6 +189,14 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                         ออเดอร์: {order.orderNumber} • ซื้อเมื่อ:{' '}
                         {new Date(order.purchasedAt).toLocaleDateString('th-TH')}
                       </p>
+                      {order.hasAddon && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9] shadow-2xs">
+                            <ShieldCheck className="w-3 h-3 text-[#2E7D32]" />
+                            {order.addonName || 'รับประกันเคลม'} (+{order.addonPrice || 0} ฿)
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -284,10 +296,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Email */}
+                    {/* Email / Phone */}
                     <div className="space-y-1">
                       <span className="text-[11px] font-medium text-[#8D6E63] flex items-center gap-1">
-                        <Mail className="w-3 h-3" /> อีเมล:
+                        <Mail className="w-3 h-3" />
+                        {order.email && !order.email.includes('@') && /^[0-9+\s-]+$/.test(order.email)
+                          ? 'เบอร์โทรศัพท์:'
+                          : 'อีเมล / บัญชี:'}
                       </span>
                       <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#FFD9CE] text-xs font-mono font-bold text-[#5D4037]">
                         <span className="truncate">{order.email}</span>
@@ -295,7 +310,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                           <button
                             onClick={() => handleCopy(order.email, `${order.id}-email`)}
                             className="ml-2 p-1 rounded-lg hover:bg-[#FFF8F3] text-[#E5989B]"
-                            title="คัดลอกอีเมล"
+                            title="คัดลอกอีเมลหรือเบอร์โทร"
                           >
                             {copiedId === `${order.id}-email` ? (
                               <Check className="w-3.5 h-3.5 text-emerald-600" />

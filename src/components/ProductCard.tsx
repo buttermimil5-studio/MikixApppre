@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { ProductModal } from './ProductModal';
-import { Clock, MessageCircle, ShoppingBag, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Clock, MessageCircle, ShoppingBag, CheckCircle2, AlertCircle, Flame } from 'lucide-react';
 
 interface ProductCardProps {
   product: any;
@@ -37,8 +37,14 @@ export function ProductCard({
               className="w-full h-full object-cover group-hover:scale-104 transition-transform duration-300"
             />
 
-            {/* Category Badge */}
-            <div className="absolute top-2.5 left-2.5">
+            {/* Category & Bestseller Badges */}
+            <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+              {product.isBestseller && (
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-[#FF5722] to-[#FF8A65] text-white shadow-xs">
+                  <Flame className="w-3 h-3 text-white fill-white" />
+                  ขายดี
+                </span>
+              )}
               <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-white/95 text-[#6D4C41] border border-[#FFD9CE] shadow-xs">
                 {product.category?.name || 'แอปพรีเมียม'}
               </span>

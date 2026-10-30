@@ -24,6 +24,9 @@ export interface PurchaseResult {
     lineOaUrl?: string | null;
     rules: string;
     usageGuide: string;
+    hasAddon?: boolean;
+    addonName?: string | null;
+    addonPrice?: number;
     isGuest?: boolean;
   };
   remainingBalance?: number;
@@ -40,7 +43,10 @@ import { calculateSlotExpiry } from '@/lib/cutoff';
  * 4. Calculates expiration timestamp from exact purchase time
  * 5. Returns decrypted credentials immediately and safely
  */
-export async function purchaseProductAction(productId: string): Promise<PurchaseResult> {
+export async function purchaseProductAction(
+  productId: string,
+  includeAddon?: boolean
+): Promise<PurchaseResult> {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -69,10 +75,13 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
     }
 
     // Determine price based on user role (AGENT/ADMIN get wholesale price, others get retail price)
-    const effectivePrice =
+    const basePrice =
       user.role === 'AGENT' || user.role === 'ADMIN'
         ? product.price
         : product.retailPrice || product.price;
+
+    const addonPrice = (includeAddon && product.addonEnabled) ? (product.addonPrice || 0) : 0;
+    const effectivePrice = basePrice + addonPrice;
 
     // 3. Fast pre-check for user balance
     if (user.creditBalance < effectivePrice) {
@@ -172,6 +181,9 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
           productId: product.id,
           profileSlotId: availableSlot.id,
           amountPaid: effectivePrice,
+          hasAddon: Boolean(includeAddon && product.addonEnabled),
+          addonName: (includeAddon && product.addonEnabled) ? (product.addonName || 'รับประกันเคลม') : null,
+          addonPrice: addonPrice,
           purchasedAt,
           expiresAt,
           status: 'ACTIVE',
@@ -210,6 +222,9 @@ export async function purchaseProductAction(productId: string): Promise<Purchase
         lineOaUrl: product.lineOaUrl,
         rules: product.rules,
         usageGuide: product.usageGuide,
+        hasAddon: transactionResult.order.hasAddon,
+        addonName: transactionResult.order.addonName,
+        addonPrice: transactionResult.order.addonPrice,
       },
     };
   } catch (error: any) {
@@ -348,6 +363,9 @@ export async function getUserOrdersAction() {
         lineOaUrl: o.product.lineOaUrl,
         rules: o.product.rules,
         usageGuide: o.product.usageGuide,
+        hasAddon: o.hasAddon,
+        addonName: o.addonName,
+        addonPrice: o.addonPrice,
       };
     });
 
@@ -398,7 +416,9 @@ export async function guestPurchaseWithSlipAction(
       return { success: false, error: 'สินค้านี้ไม่พร้อมจำหน่าย หรือถูกปิดการขายชั่วคราว' };
     }
 
-    const requiredPrice = product.retailPrice || product.price;
+    const includeAddon = formData.get('includeAddon') === 'true';
+    const addonPrice = (includeAddon && product.addonEnabled) ? (product.addonPrice || 0) : 0;
+    const requiredPrice = (product.retailPrice || product.price) + addonPrice;
 
     // 3. Fast pre-check for stock availability
     const availableSlotCheck = await prisma.accountProfileSlot.findFirst({
@@ -641,6 +661,9 @@ export async function guestPurchaseWithSlipAction(
           productId: product.id,
           profileSlotId: availableSlot.id,
           amountPaid: requiredPrice,
+          hasAddon: Boolean(includeAddon && product.addonEnabled),
+          addonName: (includeAddon && product.addonEnabled) ? (product.addonName || 'รับประกันเคลม') : null,
+          addonPrice: addonPrice,
           purchasedAt,
           expiresAt,
           status: 'ACTIVE',
@@ -677,6 +700,9 @@ export async function guestPurchaseWithSlipAction(
         lineOaUrl: product.lineOaUrl,
         rules: product.rules,
         usageGuide: product.usageGuide,
+        hasAddon: transactionResult.order.hasAddon,
+        addonName: transactionResult.order.addonName,
+        addonPrice: transactionResult.order.addonPrice,
         isGuest: true,
       },
     };

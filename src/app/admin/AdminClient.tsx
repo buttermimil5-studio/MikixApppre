@@ -18,6 +18,7 @@ import {
   updateStockSlotsAction,
   recycleStockAccountAction,
   toggleProductActiveAction,
+  toggleProductBestsellerAction,
   saveProductAction,
   updateStoreSettingsAction,
   approveManualTopupAction,
@@ -68,6 +69,7 @@ import {
   Volume2,
   Video,
   Search,
+  Flame,
 } from 'lucide-react';
 import { BakeryLoadingModal } from '@/components/BakeryLoadingModal';
 import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
@@ -279,6 +281,10 @@ export function AdminClient({
   const [prodHasProfilePin, setProdHasProfilePin] = useState(false);
   const [prodDefaultSlotCount, setProdDefaultSlotCount] = useState<number | string>(1);
   const [prodSharingTypeNote, setProdSharingTypeNote] = useState('');
+  const [prodAddonEnabled, setProdAddonEnabled] = useState(false);
+  const [prodAddonName, setProdAddonName] = useState('รับประกันเคลม');
+  const [prodAddonPrice, setProdAddonPrice] = useState<number | string>(5);
+  const [prodIsBestseller, setProdIsBestseller] = useState(false);
   const [prodLoading, setProdLoading] = useState(false);
 
   // Bank Account Modal
@@ -442,7 +448,7 @@ export function AdminClient({
     }
 
     if (!newStockEmail.trim()) {
-      alert('กรุณากรอกอีเมลบัญชี');
+      alert('กรุณากรอกอีเมลหรือเบอร์โทรศัพท์บัญชี');
       return;
     }
 
@@ -559,6 +565,11 @@ export function AdminClient({
     setProducts(products.map((p) => (p.id === id ? { ...p, isActive: !current } : p)));
   };
 
+  const handleToggleBestseller = async (id: string, current: boolean) => {
+    await toggleProductBestsellerAction(id, !current);
+    setProducts(products.map((p) => (p.id === id ? { ...p, isBestseller: !current } : p)));
+  };
+
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setProdLoading(true);
@@ -579,6 +590,10 @@ export function AdminClient({
       hasProfilePin: prodHasProfilePin,
       defaultSlotCount: Number(prodDefaultSlotCount) || 1,
       sharingTypeNote: prodSharingTypeNote,
+      addonEnabled: prodAddonEnabled,
+      addonName: prodAddonName.trim() || 'รับประกันเคลม',
+      addonPrice: Number(prodAddonPrice) || 0,
+      isBestseller: prodIsBestseller,
       isActive: editProductModal ? editProductModal.isActive : true,
     });
     setProdLoading(false);
@@ -1086,7 +1101,7 @@ export function AdminClient({
                     <th className="pb-3">สินค้า</th>
                     <th className="pb-3">ผู้ซื้อ</th>
                     <th className="pb-3">จอ / PIN</th>
-                    <th className="pb-3">อีเมลบัญชี</th>
+                    <th className="pb-3">อีเมล / เบอร์โทร</th>
                     <th className="pb-3">รหัสผ่าน</th>
                     <th className="pb-3">วันที่ซื้อ / หมดอายุ</th>
                     <th className="pb-3 text-right">ยอดขาย</th>
@@ -1098,7 +1113,15 @@ export function AdminClient({
                   {displayedOrders.map((ord: any) => (
                     <tr key={ord.id} className="hover:bg-[#FFFDF7] transition-colors">
                       <td className="py-3 font-mono font-bold text-[#5D4037]">{ord.orderNumber}</td>
-                      <td className="py-3 font-bold text-[#5D4037]">{ord.productName}</td>
+                      <td className="py-3 font-bold text-[#5D4037]">
+                        <div>{ord.productName}</div>
+                        {ord.hasAddon && (
+                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9]">
+                            <ShieldCheck className="w-2.5 h-2.5" />
+                            แอดออน: {ord.addonName || 'รับประกันเคลม'} (+{ord.addonPrice} ฿)
+                          </span>
+                        )}
+                      </td>
                       <td className="py-3">
                         <span className="font-bold text-[#6D4C41]">@{ord.buyerUsername}</span>
                         {ord.buyerProfileName && (
@@ -1221,7 +1244,7 @@ export function AdminClient({
                   setStockSearchQuery(e.target.value);
                   setVisibleStocksCount(10);
                 }}
-                placeholder="ค้นหาอีเมลบัญชี, ชื่อแอป, หมายเหตุ, ผู้ซื้อ..."
+                placeholder="ค้นหาอีเมล, เบอร์โทรศัพท์, ชื่อแอป, หมายเหตุ, ผู้ซื้อ..."
                 className="w-full pl-9 pr-8 py-2 rounded-full bg-white border border-[#E8DCCF] text-xs font-medium text-[#5D4037] placeholder-[#A1887F] focus:outline-none focus:border-[#FFB4A2] shadow-xs"
               />
               {stockSearchQuery && (
@@ -1271,7 +1294,8 @@ export function AdminClient({
                         )}
                       </div>
                       <p className="text-xs font-mono text-[#8D6E63] mt-0.5">
-                        อีเมล: <span className="font-bold text-[#5D4037]">{stock.email}</span>
+                        {stock.email && !stock.email.includes('@') && /^[0-9+\s-]+$/.test(stock.email) ? 'เบอร์โทร:' : 'บัญชี / อีเมล:'}{' '}
+                        <span className="font-bold text-[#5D4037]">{stock.email}</span>
                         {stock.notes && ` • หมายเหตุ: ${stock.notes}`}
                       </p>
                     </div>
@@ -1508,6 +1532,10 @@ export function AdminClient({
                 setProdHasProfilePin(false);
                 setProdDefaultSlotCount(1);
                 setProdSharingTypeNote('');
+                setProdAddonEnabled(false);
+                setProdAddonName('รับประกันเคลม');
+                setProdAddonPrice(5);
+                setProdIsBestseller(false);
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
             >
@@ -1554,21 +1582,49 @@ export function AdminClient({
                           {p.sharingTypeNote}
                         </span>
                       )}
+                      {p.addonEnabled && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E8F5E9] text-[#2E7D32] border border-[#C8E6C9] flex items-center gap-1">
+                          <ShieldCheck className="w-2.5 h-2.5" />
+                          แอดออน: {p.addonName} (+{p.addonPrice}฿)
+                        </span>
+                      )}
+                      {p.isBestseller && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-[#FF5722] to-[#FF8A65] text-white flex items-center gap-1 shadow-2xs">
+                          <Flame className="w-2.5 h-2.5 fill-white" />
+                          หมุดขายดี
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-[#E8DCCF]">
-                  <button
-                    onClick={() => handleToggleProduct(p.id, p.isActive)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                      p.isActive
-                        ? 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
-                        : 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
-                    }`}
-                  >
-                    {p.isActive ? 'เปิดขาย (Active)' : 'ปิดขาย (Disabled)'}
-                  </button>
+                <div className="flex items-center justify-between pt-2 border-t border-[#E8DCCF] flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleToggleProduct(p.id, p.isActive)}
+                      className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                        p.isActive
+                          ? 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
+                          : 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
+                      }`}
+                    >
+                      {p.isActive ? 'เปิดขาย (Active)' : 'ปิดขาย (Disabled)'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBestseller(p.id, p.isBestseller)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1 transition-all ${
+                        p.isBestseller
+                          ? 'bg-[#FF5722] text-white border-[#FF5722] shadow-2xs'
+                          : 'bg-white hover:bg-[#FFF0EB] text-[#8D6E63] border-[#FFD9CE]'
+                      }`}
+                      title={p.isBestseller ? 'คลิกเพื่อยกเลิกการปักหมุดขายดี' : 'คลิกเพื่อปักหมุดเป็นสินค้าขายดี'}
+                    >
+                      <Flame className={`w-3 h-3 ${p.isBestseller ? 'text-white fill-white' : 'text-[#FF5722]'}`} />
+                      <span>{p.isBestseller ? 'หมุดขายดี' : 'ปักหมุด'}</span>
+                    </button>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <button
@@ -1588,6 +1644,10 @@ export function AdminClient({
                         setProdHasProfilePin(p.hasProfilePin ?? false);
                         setProdDefaultSlotCount(p.defaultSlotCount ?? 1);
                         setProdSharingTypeNote(p.sharingTypeNote || '');
+                        setProdAddonEnabled(p.addonEnabled ?? false);
+                        setProdAddonName(p.addonName || 'รับประกันเคลม');
+                        setProdAddonPrice(p.addonPrice ?? 5);
+                        setProdIsBestseller(p.isBestseller ?? false);
                       }}
                       className="text-xs font-bold text-[#FFB4A2] hover:underline"
                     >
@@ -2598,10 +2658,11 @@ export function AdminClient({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#5D4037]">อีเมลบัญชี *</label>
+                    <label className="text-xs font-bold text-[#5D4037]">อีเมล / เบอร์โทรศัพท์บัญชี *</label>
                     <input
-                      type="email"
+                      type="text"
                       required
+                      placeholder="เช่น user@gmail.com หรือ 0812345678"
                       value={newStockEmail}
                       onChange={(e) => setNewStockEmail(e.target.value)}
                       className="w-full miki-input text-xs font-mono font-bold"
@@ -3150,6 +3211,97 @@ export function AdminClient({
                       />
                     </div>
                   )}
+                </div>
+
+                {/* Add-on Settings (Requested: บริการเสริม เช่น บวกเพิ่ม 5 เครดิต รับเคลม) */}
+                <div className="p-3.5 rounded-2xl bg-[#FFFDF5] border border-[#FFD9CE] space-y-3">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-[#5D4037]">
+                    <ShieldCheck className="w-4 h-4 text-[#E5989B]" />
+                    <span>บริการเสริม / แอดออน (Add-on เช่น รับประกันเคลม)</span>
+                  </div>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer text-xs">
+                    <input
+                      type="checkbox"
+                      checked={prodAddonEnabled}
+                      onChange={(e) => setProdAddonEnabled(e.target.checked)}
+                      className="rounded text-[#E5989B] mt-0.5"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5D4037] block">
+                        เปิดให้ลูกค้าเลือกซื้อบริการเสริม / แอดออนสำหรับสินค้านี้
+                      </span>
+                      <span className="text-[11px] text-[#8D6E63] leading-relaxed block">
+                        ลูกค้าสามารถกดปุ่มเลือกบริการเสริมเพื่อบวกเครดิตเพิ่มได้ เช่น รับประกันเคลมจอ 24 ชม.
+                      </span>
+                    </div>
+                  </label>
+
+                  {prodAddonEnabled && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#FFD9CE]/60">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-[#8D6E63]">
+                          ชื่อบริการเสริม (แสดงที่ปุ่มกดของลูกค้า)
+                        </label>
+                        <input
+                          type="text"
+                          value={prodAddonName}
+                          onChange={(e) => setProdAddonName(e.target.value)}
+                          placeholder="เช่น รับประกันเคลม, ดูแลตลอดการใช้งาน"
+                          className="w-full miki-input text-xs font-bold"
+                        />
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <span className="text-[10px] text-[#A1887F]">พรีเซ็ตด่วน:</span>
+                          {['รับประกันเคลม', 'ประกันจอชน/จอเต็ม', 'ดูแลด่วน 24 ชม.'].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setProdAddonName(preset)}
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white hover:bg-[#FFE8D6] text-[#6D4C41] border border-[#FFD9CE] transition-colors"
+                            >
+                              + {preset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-[#8D6E63]">
+                          ราคาบวกเพิ่ม (เครดิต / บาท)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={prodAddonPrice}
+                          onChange={(e) => setProdAddonPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          className="w-full miki-input text-xs font-bold"
+                        />
+                        <span className="text-[10px] text-[#8D6E63] block">
+                          เมื่อลูกค้ากดเลือก จะบวกราคาเพิ่ม {prodAddonPrice || 0} เครดิต
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bestseller Pin Setting (หมุดสินค้าขายดี) */}
+                <div className="p-3.5 rounded-2xl bg-[#FFF5F2] border border-[#FFD9CE] space-y-1.5">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-xs">
+                    <input
+                      type="checkbox"
+                      checked={prodIsBestseller}
+                      onChange={(e) => setProdIsBestseller(e.target.checked)}
+                      className="rounded text-[#FF5722]"
+                    />
+                    <div className="flex items-center gap-1.5 font-bold text-[#5D4037]">
+                      <Flame className={`w-4 h-4 ${prodIsBestseller ? 'text-[#FF5722] fill-[#FF5722]' : 'text-[#8D6E63]'}`} />
+                      <span>ปักหมุดเป็น "สินค้าขายดี" (Bestseller)</span>
+                    </div>
+                  </label>
+                  <p className="text-[11px] text-[#8D6E63] pl-6 leading-relaxed">
+                    สินค้าที่ปักหมุดจะมีป้าย "ขายดี" กำกับ, แสดงในปุ่มตัวกรอง "สินค้าขายดี" ของลูกค้า และจะขึ้นแสดงเป็นอันดับแรกในหน้าร้าน
+                  </p>
                 </div>
               </div>
 

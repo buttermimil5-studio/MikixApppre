@@ -53,7 +53,11 @@ model Product {
   hasProfilePin Boolean       @default(false)
   defaultSlotCount Int        @default(1)
   sharingTypeNote String?     // ข้อความประเภทการหาร เช่น "หาร 4 จอไม่ชน", "หาร 5 จอชน"
-  isActive     Boolean        @default(true)
+  addonEnabled    Boolean        @default(false)
+  addonName       String?        @default("รับประกันเคลม")
+  addonPrice      Float          @default(5.0)
+  isBestseller    Boolean        @default(false)
+  isActive        Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -121,6 +125,9 @@ model Order {
   profileSlotId  String             @unique
   profileSlot    AccountProfileSlot @relation(fields: [profileSlotId], references: [id])
   amountPaid     Float
+  hasAddon       Boolean            @default(false)
+  addonName      String?
+  addonPrice     Float              @default(0.0)
   purchasedAt    DateTime           @default(now())
   expiresAt      DateTime
   status         String             @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED

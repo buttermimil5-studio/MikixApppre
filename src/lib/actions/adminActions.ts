@@ -248,7 +248,7 @@ export async function addStockAccountAction(data: {
       return { success: false, error: 'กรุณาเลือกสินค้าที่ต้องการลงสต็อก' };
     }
     if (!data.email || data.email.trim().length === 0) {
-      return { success: false, error: 'กรุณากรอกอีเมลบัญชี' };
+      return { success: false, error: 'กรุณากรอกอีเมลหรือเบอร์โทรศัพท์บัญชี' };
     }
     if (!data.password || data.password.trim().length === 0) {
       return { success: false, error: 'กรุณากรอกรหัสผ่านบัญชี' };
@@ -492,7 +492,27 @@ export async function toggleProductActiveAction(productId: string, isActive: boo
       details: `แอดมิน ${admin.username} ${isActive ? 'เปิด' : 'ปิด'} การขายสินค้า ${productId}`,
     },
   });
+  revalidatePath('/admin');
+  revalidatePath('/');
   return { success: true };
+}
+
+export async function toggleProductBestsellerAction(productId: string, isBestseller: boolean) {
+  const admin = await requireAdmin();
+  const updated = await prisma.product.update({
+    where: { id: productId },
+    data: { isBestseller },
+  });
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: 'PRODUCT_BESTSELLER_TOGGLE',
+      details: `แอดมิน ${admin.username} ${isBestseller ? 'ปักหมุด' : 'ถอนหมุด'} สินค้าขายดี ${updated.name}`,
+    },
+  });
+  revalidatePath('/admin');
+  revalidatePath('/');
+  return { success: true, isBestseller: updated.isBestseller };
 }
 
 export async function saveProductAction(data: {
@@ -511,6 +531,10 @@ export async function saveProductAction(data: {
   hasProfilePin?: boolean;
   defaultSlotCount?: number;
   sharingTypeNote?: string | null;
+  addonEnabled?: boolean;
+  addonName?: string;
+  addonPrice?: number;
+  isBestseller?: boolean;
   isActive: boolean;
 }) {
   const admin = await requireAdmin();
@@ -530,6 +554,10 @@ export async function saveProductAction(data: {
     hasProfilePin: data.hasProfilePin ?? false,
     defaultSlotCount: data.defaultSlotCount ?? 1,
     sharingTypeNote: data.sharingTypeNote?.trim() || null,
+    addonEnabled: data.addonEnabled ?? false,
+    addonName: data.addonName?.trim() || 'รับประกันเคลม',
+    addonPrice: data.addonPrice !== undefined ? data.addonPrice : 5.0,
+    isBestseller: data.isBestseller ?? false,
     isActive: data.isActive,
   };
 
@@ -713,6 +741,9 @@ export async function getAdminOrders() {
       slotPin: o.profileSlot.slotPin,
       email: creds.email,
       password: creds.password,
+      hasAddon: o.hasAddon,
+      addonName: o.addonName,
+      addonPrice: o.addonPrice,
     };
   });
 }

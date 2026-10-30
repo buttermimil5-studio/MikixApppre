@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ProductCard } from './ProductCard';
 import { ShokupanIcon } from './BakeryLineIcons';
-import { Sparkles, Layers, Search } from 'lucide-react';
+import { Sparkles, Layers, Search, Flame } from 'lucide-react';
 
 interface ProductCatalogProps {
   initialProducts: any[];
@@ -24,9 +24,16 @@ export function ProductCatalog({
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState(initialUser);
 
+  const bestsellerCount = initialProducts.filter((p) => p.isBestseller).length;
+
   const filteredProducts = initialProducts.filter((product) => {
     const matchesCategory =
-      selectedCategory === 'ALL' || product.categoryId === selectedCategory;
+      selectedCategory === 'ALL'
+        ? true
+        : selectedCategory === 'BESTSELLER'
+        ? Boolean(product.isBestseller)
+        : product.categoryId === selectedCategory;
+
     const matchesSearch =
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.category?.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -49,6 +56,18 @@ export function ProductCatalog({
           >
             <Layers className="w-3.5 h-3.5 text-[#E5989B]" />
             <span>ทั้งหมด ({initialProducts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setSelectedCategory('BESTSELLER')}
+            className={`flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-200 ${
+              selectedCategory === 'BESTSELLER'
+                ? 'bg-[#FF5722] text-white shadow-sm transform scale-102'
+                : 'text-[#8D6E63] hover:text-[#D84315]'
+            }`}
+          >
+            <Flame className={`w-3.5 h-3.5 ${selectedCategory === 'BESTSELLER' ? 'text-white fill-white' : 'text-[#FF5722]'}`} />
+            <span>สินค้าขายดี {bestsellerCount > 0 ? `(${bestsellerCount})` : ''}</span>
           </button>
 
           {categories.map((cat) => (

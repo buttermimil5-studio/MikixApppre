@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   purchaseProductAction,
@@ -57,6 +57,16 @@ export function ProductModal({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [selectedAddon, setSelectedAddon] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedAddon(false);
+      setError(null);
+      setOrderResult(null);
+      setIsGuestMode(false);
+    }
+  }, [isOpen, product?.id]);
 
   // Guest Direct Checkout States
   const [isGuestMode, setIsGuestMode] = useState(false);
@@ -68,8 +78,12 @@ export function ProductModal({
   const [copiedBankInfo, setCopiedBankInfo] = useState(false);
 
   const isAgent = user?.role === 'AGENT' || user?.role === 'ADMIN';
-  const effectivePrice = isAgent ? product.price : (product.retailPrice || product.price);
-  const retailPrice = product.retailPrice || product.price;
+  const baseEffectivePrice = isAgent ? product.price : (product.retailPrice || product.price);
+  const baseRetailPrice = product.retailPrice || product.price;
+
+  const addonPrice = (product.addonEnabled && selectedAddon) ? (product.addonPrice || 0) : 0;
+  const effectivePrice = baseEffectivePrice + addonPrice;
+  const retailPrice = baseRetailPrice + addonPrice;
 
   // Active bank calculation
   const activeBank = bankAccounts.length > 0
@@ -125,6 +139,7 @@ export function ProductModal({
     const formData = new FormData();
     if (guestSlipFile) formData.append('slip', guestSlipFile);
     if (guestTransRef.trim()) formData.append('transRef', guestTransRef.trim());
+    if (selectedAddon) formData.append('includeAddon', 'true');
 
     const res = await guestPurchaseWithSlipAction(product.id, formData);
     setGuestLoading(false);
@@ -148,14 +163,20 @@ export function ProductModal({
     expiresAt?: string;
     rules?: string;
     usageGuide?: string;
+    hasAddon?: boolean;
+    addonName?: string | null;
+    addonPrice?: number;
   }) => {
     const text = [
       `[ ข้อมูลเข้าใช้งานแอปพรีเมียม - ${data.productName} ]`,
       data.orderNumber ? `เลขออเดอร์: ${data.orderNumber}` : '',
-      `อีเมล: ${data.email}`,
+      data.email && !data.email.includes('@') && /^[0-9+\s-]+$/.test(data.email)
+        ? `เบอร์โทรศัพท์: ${data.email}`
+        : `อีเมล: ${data.email}`,
       `รหัสผ่าน: ${data.password}`,
       `จอ / โปรไฟล์ที่ได้รับ: ${data.slotName}`,
       data.slotPin ? `รหัส PIN ประจำจอ: ${data.slotPin}` : 'รหัส PIN: ไม่ต้องใช้ PIN (เข้าใช้งานได้ทันที)',
+      data.hasAddon ? `บริการเสริม: ${data.addonName || 'รับประกันเคลม'} (คุ้มครองเรียบร้อย)` : '',
       data.expiresAt ? `วันหมดอายุ: ${new Date(data.expiresAt).toLocaleString('th-TH')}` : '',
       '',
       `[ กฎและข้อกำหนดการใช้งาน ]`,
@@ -179,7 +200,7 @@ export function ProductModal({
     setLoading(true);
     setError(null);
 
-    const res = await purchaseProductAction(product.id);
+    const res = await purchaseProductAction(product.id, selectedAddon);
     setLoading(false);
 
     if (res.success && res.order) {
@@ -334,18 +355,31 @@ export function ProductModal({
                   </div>
                 </div>
 
-                {/* Email Field */}
+                {/* Add-on Banner in Ticket if Purchased */}
+                {orderResult.hasAddon && (
+                  <div className="p-2.5 rounded-xl bg-[#E8F5E9] border border-[#C8E6C9] flex items-center justify-between text-xs font-bold text-[#2E7D32]">
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-[#2E7D32]" />
+                      <span>บริการเสริม: {orderResult.addonName || 'รับประกันเคลม'}</span>
+                    </div>
+                    <span>+{orderResult.addonPrice || 0} ฿ (รับประกันเคลม)</span>
+                  </div>
+                )}
+
+                {/* Email / Phone Field */}
                 <div className="space-y-1">
                   <span className="text-xs text-[#8D6E63] font-medium flex items-center gap-1">
                     <Mail className="w-3.5 h-3.5" />
-                    อีเมล:
+                    {orderResult.email && !orderResult.email.includes('@') && /^[0-9+\s-]+$/.test(orderResult.email)
+                      ? 'เบอร์โทรศัพท์บัญชี:'
+                      : 'อีเมลเข้าใช้งาน:'}
                   </span>
                   <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-[#E8DCCF] text-xs font-mono font-bold text-[#5D4037]">
                     <span className="truncate select-all">{orderResult.email}</span>
                     <button
                       onClick={() => handleCopy(orderResult.email, 'email')}
                       className="ml-2 p-1 rounded-lg hover:bg-[#FFF0EB] text-[#E5989B]"
-                      title="คัดลอกอีเมล"
+                      title="คัดลอกอีเมลหรือเบอร์โทร"
                     >
                       {copiedField === 'email' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                     </button>
@@ -393,6 +427,9 @@ export function ProductModal({
                         expiresAt: orderResult.expiresAt,
                         rules: orderResult.rules || product.rules,
                         usageGuide: orderResult.usageGuide || product.usageGuide,
+                        hasAddon: orderResult.hasAddon,
+                        addonName: orderResult.addonName,
+                        addonPrice: orderResult.addonPrice,
                       })
                     }
                     className="w-full py-2.5 px-4 rounded-full text-xs font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-xs"
@@ -838,6 +875,66 @@ export function ProductModal({
                 <div className="p-3 rounded-2xl bg-[#FFF0EB] border border-[#FFCCBC] flex items-center gap-2 text-xs text-[#D84315] font-bold">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span>{error}</span>
+                </div>
+              )}
+
+              {/* Add-on Option Selection (เช่น บวกเพิ่ม 5 เครดิต รับเคลม พอกดปุ่มก็บวก 5 เครดิต) */}
+              {product.addonEnabled && (
+                <div
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    selectedAddon
+                      ? 'bg-[#F0FDF4] border-[#86EFAC] shadow-xs'
+                      : 'bg-[#FFFDF5] border-[#FFD9CE]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors shadow-2xs ${
+                          selectedAddon
+                            ? 'bg-[#DCFCE7] text-[#16A34A] border border-[#86EFAC]'
+                            : 'bg-white text-[#E5989B] border border-[#FFD9CE]'
+                        }`}
+                      >
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-extrabold text-xs text-[#5D4037]">
+                            {product.addonName || 'รับประกันเคลม'}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFE8D6] text-[#D84315] border border-[#FFCDB2]">
+                            +{product.addonPrice || 5} เครดิต
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[#8D6E63] leading-tight block mt-0.5">
+                          บริการเสริมพิเศษ รับประกันเคลมตลอดการใช้งาน
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAddon(!selectedAddon)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 shadow-2xs active:scale-95 ${
+                        selectedAddon
+                          ? 'bg-[#16A34A] text-white border border-[#16A34A]'
+                          : 'bg-white hover:bg-[#FFE8D6] text-[#5D4037] border border-[#FFD9CE]'
+                      }`}
+                    >
+                      {selectedAddon ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-white" />
+                          <span>เลือกแล้ว (+{product.addonPrice || 5} ฿)</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[#E5989B] font-black">+</span>
+                          <span>เพิ่มบริการ ({product.addonPrice || 5} ฿)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
 
