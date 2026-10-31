@@ -177,8 +177,11 @@ export async function getAdminStocks() {
       product: true,
       profileSlots: {
         include: {
-          order: {
+          orders: {
+            where: { status: 'ACTIVE' },
             include: { user: true },
+            take: 1,
+            orderBy: { purchasedAt: 'desc' },
           },
         },
       },
@@ -192,11 +195,11 @@ export async function getAdminStocks() {
 
     // Calculate whole-account latest cutoff time (when the last slot expires)
     const activeSlotsWithOrder = s.profileSlots.filter(
-      (slot) => slot.order && slot.order.status === 'ACTIVE' && slot.order.expiresAt
+      (slot) => slot.orders && slot.orders.length > 0 && slot.orders[0].expiresAt
     );
     let accountCutoffTime: string | null = null;
     if (activeSlotsWithOrder.length > 0) {
-      const timestamps = activeSlotsWithOrder.map((slot) => new Date(slot.order!.expiresAt).getTime());
+      const timestamps = activeSlotsWithOrder.map((slot) => new Date(slot.orders[0].expiresAt).getTime());
       accountCutoffTime = new Date(Math.max(...timestamps)).toISOString();
     }
 
@@ -215,17 +218,20 @@ export async function getAdminStocks() {
       autoRenew: s.autoRenew,
       accountCutoffTime,
       createdAt: s.createdAt.toISOString(),
-      slots: s.profileSlots.map((slot) => ({
-        id: slot.id,
-        slotName: slot.slotName,
-        slotPin: slot.slotPin,
-        deviceType: slot.deviceType || 'MOBILE',
-        productId: slot.productId || null,
-        status: slot.status,
-        assignedUser: slot.order?.user?.username || null,
-        orderNumber: slot.order?.orderNumber || null,
-        expiresAt: slot.order?.expiresAt?.toISOString() || null,
-      })),
+      slots: s.profileSlots.map((slot) => {
+        const activeOrder = slot.orders?.[0];
+        return {
+          id: slot.id,
+          slotName: slot.slotName,
+          slotPin: slot.slotPin,
+          deviceType: slot.deviceType || 'MOBILE',
+          productId: slot.productId || null,
+          status: slot.status,
+          assignedUser: activeOrder?.user?.username || null,
+          orderNumber: activeOrder?.orderNumber || null,
+          expiresAt: activeOrder?.expiresAt?.toISOString() || null,
+        };
+      }),
     };
   });
 }

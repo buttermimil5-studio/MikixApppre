@@ -108,7 +108,7 @@ model AccountProfileSlot {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  order          Order?
+  orders         Order[]
 
   @@index([accountStockId])
   @@index([productId])
@@ -122,7 +122,7 @@ model Order {
   user           User               @relation(fields: [userId], references: [id])
   productId      String
   product        Product            @relation(fields: [productId], references: [id])
-  profileSlotId  String             @unique
+  profileSlotId  String
   profileSlot    AccountProfileSlot @relation(fields: [profileSlotId], references: [id])
   amountPaid     Float
   hasAddon       Boolean            @default(false)
@@ -136,6 +136,7 @@ model Order {
 
   @@index([userId])
   @@index([productId])
+  @@index([profileSlotId])
   @@index([status])
   @@index([purchasedAt])
 }

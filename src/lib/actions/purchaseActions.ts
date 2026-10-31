@@ -125,9 +125,10 @@ export async function purchaseProductAction(
         include: {
           accountStock: true,
         },
-        orderBy: {
-          createdAt: 'asc', // FIFO stock allocation (ส่งมอบจอตามลำดับคิว 1 -> 2 -> 3 ...)
-        },
+        orderBy: [
+          { accountStock: { createdAt: 'asc' } },
+          { createdAt: 'asc' },
+        ],
       });
 
       if (!availableSlot) {
@@ -618,9 +619,10 @@ export async function guestPurchaseWithSlipAction(
         include: {
           accountStock: true,
         },
-        orderBy: {
-          createdAt: 'asc',
-        },
+        orderBy: [
+          { accountStock: { createdAt: 'asc' } },
+          { createdAt: 'asc' },
+        ],
       });
 
       if (!availableSlot) {
