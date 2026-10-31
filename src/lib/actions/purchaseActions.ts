@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { decryptCredentials, decryptStockCredentials } from '@/lib/crypto';
+import { revalidatePath } from 'next/cache';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -204,6 +205,8 @@ export async function purchaseProductAction(
       };
     });
 
+    revalidatePath('/');
+
     return {
       success: true,
       remainingBalance: transactionResult.remainingBalance,
@@ -303,20 +306,40 @@ export async function getUserOrdersAction() {
     });
 
     for (const exp of expiredOrders) {
-      await prisma.$transaction([
-        prisma.order.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
           where: { id: exp.id },
           data: { status: 'EXPIRED' },
-        }),
-        prisma.accountProfileSlot.update({
+        });
+        await tx.accountProfileSlot.update({
           where: { id: exp.profileSlotId },
           data: { status: 'EXPIRED' },
-        }),
-        prisma.accountStock.update({
-          where: { id: exp.profileSlot.accountStockId },
-          data: { status: 'SERVICING' }, // Move stock to Servicing for admin password rotation
-        }),
-      ]);
+        });
+
+        // Check if there are still active orders or available slots on this stock
+        const remainingActiveOrders = await tx.order.count({
+          where: {
+            profileSlot: { accountStockId: exp.profileSlot.accountStockId },
+            status: 'ACTIVE',
+            id: { not: exp.id },
+          },
+        });
+
+        const remainingAvailableSlots = await tx.accountProfileSlot.count({
+          where: {
+            accountStockId: exp.profileSlot.accountStockId,
+            status: 'AVAILABLE',
+          },
+        });
+
+        // Only move stock to SERVICING if there are no more active orders and no available slots left
+        if (remainingActiveOrders === 0 && remainingAvailableSlots === 0) {
+          await tx.accountStock.update({
+            where: { id: exp.profileSlot.accountStockId },
+            data: { status: 'SERVICING' },
+          });
+        }
+      });
     }
 
     const orders = await prisma.order.findMany({
@@ -682,6 +705,8 @@ export async function guestPurchaseWithSlipAction(
         password,
       };
     });
+
+    revalidatePath('/');
 
     return {
       success: true,

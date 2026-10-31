@@ -236,6 +236,8 @@ export function AdminClient({
   const [newStockPaymentMethod, setNewStockPaymentMethod] = useState<string>('TrueMoney Wallet');
   const [newStockAutoRenew, setNewStockAutoRenew] = useState<boolean>(true);
   const [newStockLoading, setNewStockLoading] = useState(false);
+  const [showSlotDetailConfig, setShowSlotDetailConfig] = useState(false);
+  const [newStockDefaultDevice, setNewStockDefaultDevice] = useState('MOBILE');
 
   // Edit stock billing modal
   const [editBillingStock, setEditBillingStock] = useState<any | null>(null);
@@ -400,20 +402,89 @@ export function AdminClient({
     }
   };
 
+  const initSlotsForProduct = (prod: any) => {
+    if (!prod) return;
+    const count = Math.max(1, prod.defaultSlotCount || 1);
+    setNewStockSlotCount(count);
+
+    const isTvProduct = prod.name.toLowerCase().includes('tv') || prod.name.includes('ทีวี');
+    setNewStockDefaultDevice(isTvProduct ? 'TV' : 'MOBILE');
+    setShowSlotDetailConfig(false);
+
+    const slots = [];
+    for (let i = 0; i < count; i++) {
+      if (count === 1) {
+        slots.push({
+          slotName: isTvProduct ? 'จอ 1 (ทีวี)' : (prod.hasProfilePin ? 'จอ 1' : 'เต็มจอ / 1 สิทธิ์'),
+          slotPin: '',
+          deviceType: isTvProduct ? 'TV' : 'MOBILE',
+          productId: '',
+          status: 'AVAILABLE',
+        });
+      } else {
+        slots.push({
+          slotName: isTvProduct ? `จอ ${i + 1} (ทีวี)` : `จอ ${i + 1} (มือถือ/แท็บเล็ต)`,
+          slotPin: '',
+          deviceType: isTvProduct ? 'TV' : 'MOBILE',
+          productId: '',
+          status: 'AVAILABLE',
+        });
+      }
+    }
+    setNewStockSlots(slots);
+  };
+
+  const applySingleSlotPreset = () => {
+    const currentProd = products.find((p) => p.id === newStockProduct);
+    const isTv = currentProd && (currentProd.name.toLowerCase().includes('tv') || currentProd.name.includes('ทีวี'));
+    setNewStockSlotCount(1);
+    setNewStockDefaultDevice(isTv ? 'TV' : 'MOBILE');
+    setNewStockSlots([
+      {
+        slotName: isTv ? 'จอ 1 (ทีวี)' : (currentProd?.hasProfilePin ? 'จอ 1' : 'เต็มจอ / 1 สิทธิ์'),
+        slotPin: '',
+        deviceType: isTv ? 'TV' : 'MOBILE',
+        productId: '',
+        status: 'AVAILABLE',
+      },
+    ]);
+  };
+
+  const applyTripleMobilePreset = () => {
+    setNewStockSlotCount(3);
+    setNewStockDefaultDevice('MOBILE');
+    setNewStockSlots([
+      { slotName: 'จอ 1 (มือถือ/แท็บเล็ต)', slotPin: '', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+      { slotName: 'จอ 2 (มือถือ/แท็บเล็ต)', slotPin: '', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+      { slotName: 'จอ 3 (มือถือ/แท็บเล็ต)', slotPin: '', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+    ]);
+  };
+
   const applyNetflixPreset = () => {
     setNewStockSlotCount(4);
+    setShowSlotDetailConfig(true);
+    setNewStockDefaultDevice('MOBILE');
+    // Find matching TV product if current selected product is a mobile Netflix product
+    const currentProd = products.find((p) => p.id === newStockProduct);
+    let tvProductId = '';
+    if (currentProd && currentProd.name.toLowerCase().includes('netflix')) {
+      const is7Day = currentProd.name.includes('7');
+      const is1Day = currentProd.name.includes('1');
+      const matchingTv = products.find(
+        (p) =>
+          p.id !== currentProd.id &&
+          p.name.toLowerCase().includes('netflix') &&
+          p.name.toLowerCase().includes('tv') &&
+          ((is7Day && p.name.includes('7')) || (is1Day && p.name.includes('1')))
+      );
+      if (matchingTv) tvProductId = matchingTv.id;
+    }
+
     setNewStockSlots([
       { slotName: 'จอ 1 (มือถือ/แท็บเล็ต)', slotPin: '1234', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
       { slotName: 'จอ 2 (มือถือ/แท็บเล็ต)', slotPin: '2345', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
       { slotName: 'จอ 3 (มือถือ/แท็บเล็ต)', slotPin: '3456', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
-      { slotName: 'จอ 4 (ทีวี/Smart TV)', slotPin: '4567', deviceType: 'TV', productId: '', status: 'AVAILABLE' },
-    ]);
-  };
-
-  const applySingleSlotPreset = () => {
-    setNewStockSlotCount(1);
-    setNewStockSlots([
-      { slotName: 'เต็มจอ / 1 สิทธิ์', slotPin: '', deviceType: 'MOBILE', productId: '', status: 'AVAILABLE' },
+      { slotName: 'จอ 4 (ทีวี/Smart TV)', slotPin: '4567', deviceType: 'TV', productId: tvProductId, status: 'AVAILABLE' },
     ]);
   };
 
@@ -421,15 +492,17 @@ export function AdminClient({
     setNewStockSlotCount(countVal);
     const parsed = parseInt(String(countVal), 10);
     if (isNaN(parsed) || parsed < 1) return;
-    const n = Math.min(10, parsed);
+    const n = Math.min(50, parsed);
+    const currentProd = products.find((p) => p.id === newStockProduct);
+    const isTvProduct = currentProd && (currentProd.name.toLowerCase().includes('tv') || currentProd.name.includes('ทีวี'));
+
     setNewStockSlots((prev) => {
       const next = [];
       for (let i = 0; i < n; i++) {
-        const isTv = i === n - 1 && n > 1;
         next.push({
-          slotName: prev[i]?.slotName || (n > 1 ? `จอ ${i + 1}` : 'เต็มจอ / 1 สิทธิ์'),
+          slotName: prev[i]?.slotName || (n > 1 ? `จอ ${i + 1}` : (isTvProduct ? 'จอ 1 (ทีวี)' : 'เต็มจอ / 1 สิทธิ์')),
           slotPin: prev[i]?.slotPin || '',
-          deviceType: prev[i]?.deviceType || (isTv ? 'TV' : 'MOBILE'),
+          deviceType: prev[i]?.deviceType || (isTvProduct ? 'TV' : newStockDefaultDevice),
           productId: prev[i]?.productId || '',
           status: prev[i]?.status || 'AVAILABLE',
         });
@@ -459,13 +532,26 @@ export function AdminClient({
 
     setNewStockLoading(true);
 
-    const slots = newStockSlots.map((s, idx) => ({
-      slotName: s.slotName.trim() || `จอ ${idx + 1}`,
-      slotPin: s.slotPin.trim() || undefined,
-      deviceType: s.deviceType || 'MOBILE',
-      productId: s.productId.trim() || null,
-      status: s.status || 'AVAILABLE',
-    }));
+    const count = Number(newStockSlotCount) || 1;
+    const isTv = newStockDefaultDevice === 'TV';
+
+    const slots = showSlotDetailConfig
+      ? newStockSlots.map((s, idx) => ({
+          slotName: s.slotName.trim() || `จอ ${idx + 1}`,
+          slotPin: s.slotPin.trim() || undefined,
+          deviceType: s.deviceType || newStockDefaultDevice,
+          productId: s.productId.trim() || null,
+          status: s.status || 'AVAILABLE',
+        }))
+      : Array.from({ length: count }, (_, idx) => ({
+          slotName: isTv
+            ? (count === 1 ? 'จอ 1 (ทีวี)' : `จอ ${idx + 1} (ทีวี)`)
+            : (count === 1 ? 'เต็มจอ / 1 สิทธิ์' : `จอ ${idx + 1}`),
+          slotPin: undefined,
+          deviceType: newStockDefaultDevice,
+          productId: null,
+          status: 'AVAILABLE',
+        }));
 
     const res = await addStockAccountAction({
       productId: targetProductId,
@@ -1208,8 +1294,10 @@ export function AdminClient({
             </div>
             <button
               onClick={() => {
-                if (!newStockProduct && products.length > 0) {
-                  setNewStockProduct(products[0].id);
+                const targetProd = products.find((p) => p.id === newStockProduct) || products[0];
+                if (targetProd) {
+                  setNewStockProduct(targetProd.id);
+                  initSlotsForProduct(targetProd);
                 }
                 setNewStockModal(true);
               }}
@@ -2637,8 +2725,8 @@ export function AdminClient({
                         const prodId = e.target.value;
                         setNewStockProduct(prodId);
                         const prod = products.find((p) => p.id === prodId);
-                        if (prod && prod.hasProfilePin) {
-                          applyNetflixPreset();
+                        if (prod) {
+                          initSlotsForProduct(prod);
                         }
                       }}
                       className="w-full miki-input text-xs font-bold"
@@ -2681,135 +2769,235 @@ export function AdminClient({
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-[#5D4037]">
-                    จำนวนจอ / สิทธิ์ที่ขายได้ (เช่น Netflix = 4, เมลเดี่ยว = 1)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={newStockSlotCount}
-                    onChange={(e) => handleSlotCountChange(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-                    onBlur={() => {
-                      if (!newStockSlotCount || Number(newStockSlotCount) < 1) {
-                        handleSlotCountChange(1);
-                      }
-                    }}
-                    className="w-full miki-input text-xs font-bold"
-                  />
-                </div>
+                {/* Slot Capacity & Device Type Section */}
+                <div className="p-4 rounded-2xl bg-[#FFFDF8] border border-[#E8DCCF] space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label className="text-xs font-bold text-[#5D4037] block">
+                        จำนวนสิทธิ์ / จอที่ขายได้ในบัญชีนี้ *
+                      </label>
+                      <span className="text-[11px] text-[#8D6E63]">
+                        ระบุจำนวนสิทธิ์ได้อิสระ (เช่น 1, 3, 4, 5, 6 จอ หรือตามที่ต้องการขาย)
+                      </span>
+                    </div>
 
-                {/* Quick Presets */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-[11px] font-bold text-[#8D6E63]">พรีเซ็ตด่วน:</span>
-                  <button
-                    type="button"
-                    onClick={applyNetflixPreset}
-                    className="px-3 py-1 rounded-full text-[11px] font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] active:scale-95 transition-all shadow-2xs flex items-center gap-1"
-                  >
-                    <Tv className="w-3 h-3" />
-                    <span>Netflix (จอ 1-3 มือถือ + จอ 4 ทีวี)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applySingleSlotPreset}
-                    className="px-3 py-1 rounded-full text-[11px] font-bold bg-white text-[#5D4037] border border-[#E8DCCF] hover:bg-[#FFFDF5] active:scale-95 transition-all shadow-2xs"
-                  >
-                    <span>เต็มจอ / 1 สิทธิ์</span>
-                  </button>
-                </div>
-
-                {/* Dynamic Slot Name, PIN, Device Type Inputs */}
-                <div className="space-y-2.5 p-3.5 rounded-2xl bg-[#FFFDF8] border border-[#E8DCCF]">
-                  <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
-                    <span className="flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-[#FFB4A2]" />
-                      <span>กำหนดชื่อจอ, รหัส PIN, และประเภทอุปกรณ์</span>
-                    </span>
-                    <span className="text-[11px] font-normal text-[#8D6E63]">{newStockSlotCount} จอ</span>
+                    {/* Quick Count Chips */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[1, 2, 3, 4, 5, 6].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handleSlotCountChange(num)}
+                          className={`w-8 h-8 rounded-xl text-xs font-black transition-all active:scale-95 border ${
+                            Number(newStockSlotCount) === num
+                              ? 'bg-[#FFB4A2] text-[#4E342E] border-[#FFA28D] shadow-xs'
+                              : 'bg-white text-[#8D6E63] border-[#E8DCCF] hover:bg-[#FFF8F3]'
+                          }`}
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                    {newStockSlots.map((slot, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-2xl bg-white border border-[#FFD9CE] shadow-2xs space-y-2"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-[#8D6E63]">
+                        ระบุจำนวนเอง (สิทธิ์)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={newStockSlotCount}
+                        onChange={(e) => handleSlotCountChange(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
+                        onBlur={() => {
+                          if (!newStockSlotCount || Number(newStockSlotCount) < 1) {
+                            handleSlotCountChange(1);
+                          }
+                        }}
+                        className="w-full miki-input text-xs font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-[#8D6E63]">
+                        ประเภทอุปกรณ์หลักของสิทธิ์ชุดนี้
+                      </label>
+                      <select
+                        value={newStockDefaultDevice}
+                        onChange={(e) => {
+                          const dev = e.target.value;
+                          setNewStockDefaultDevice(dev);
+                          const updated = newStockSlots.map((s) => ({ ...s, deviceType: dev }));
+                          setNewStockSlots(updated);
+                        }}
+                        className="w-full miki-input text-xs font-bold"
                       >
-                        <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-6 h-6 rounded-lg bg-[#FFF0EB] text-[#E5989B] flex items-center justify-center text-[11px] font-extrabold">
-                              {idx + 1}
-                            </span>
-                            <span>จอที่ {idx + 1}</span>
+                        <option value="MOBILE">มือถือ/แท็บเล็ต (Mobile/Tablet) — เช่น 4 จอมือถือล้วน, 5 จอมือถือ</option>
+                        <option value="ALL">ทุกอุปกรณ์ (All Devices) — ใช้ได้ทั้งมือถือ คอม ทีวี</option>
+                        <option value="TV">สมาร์ททีวี (Smart TV) — สำหรับขายเฉพาะจอทีวี</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Toggle for Custom Screen Names & PINs */}
+                  <div className="pt-2 border-t border-[#F5EBE1]">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showSlotDetailConfig}
+                        onChange={(e) => setShowSlotDetailConfig(e.target.checked)}
+                        className="w-4 h-4 rounded text-[#E5989B] border-[#FFD9CE] focus:ring-0"
+                      />
+                      <span className="text-xs font-bold text-[#5D4037]">
+                        กำหนดชื่อจอ / รหัส PIN รายจอแบบละเอียด (เปิดเฉพาะเมื่อแอปต้องใช้ PIN หรือต้องการแยกจอทีวี)
+                      </span>
+                    </label>
+
+                    {/* Mode A: Fast/No-PIN Mode (Default) */}
+                    {!showSlotDetailConfig ? (
+                      <div className="mt-2.5 p-3 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 text-[#15803D] font-bold">
+                          <Check className="w-4 h-4 flex-shrink-0 text-[#15803D]" />
+                          <span>
+                            โหมดขายด่วน: ระบบจะสร้าง {newStockSlotCount} สิทธิ์ (
+                            {newStockDefaultDevice === 'TV'
+                              ? 'สมาร์ททีวี'
+                              : newStockDefaultDevice === 'ALL'
+                              ? 'ทุกอุปกรณ์'
+                              : 'มือถือ/แท็บเล็ต'}
+                            ) ให้อัตโนมัติ โดยไม่ต้องเสียเวลากรอก PIN หรือชื่อจอ
                           </span>
-                          <div className="flex items-center gap-2">
-                            {/* Device type selector */}
-                            <select
-                              value={slot.deviceType || 'MOBILE'}
-                              onChange={(e) => {
-                                const updated = [...newStockSlots];
-                                updated[idx].deviceType = e.target.value;
-                                setNewStockSlots(updated);
-                              }}
-                              className="text-[10px] font-bold py-1 px-2 rounded-lg border border-[#FFD9CE] bg-[#FFF8F3] text-[#6D4C41]"
-                            >
-                              <option value="MOBILE">มือถือ/แท็บเล็ต (Mobile)</option>
-                              <option value="TV">สมาร์ททีวี (Smart TV)</option>
-                              <option value="ALL">ทุกอุปกรณ์ (All)</option>
-                            </select>
-
-                            {/* Status toggle */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = [...newStockSlots];
-                                updated[idx].status = updated[idx].status === 'LOCKED' ? 'AVAILABLE' : 'LOCKED';
-                                setNewStockSlots(updated);
-                              }}
-                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all ${
-                                slot.status === 'LOCKED'
-                                  ? 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
-                                  : 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
-                              }`}
-                            >
-                              {slot.status === 'LOCKED' ? 'ล็อกไว้ (ไม่ขาย)' : 'พร้อมขาย'}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[#8D6E63]">ชื่อจอ / โปรไฟล์</label>
-                            <input
-                              type="text"
-                              value={slot.slotName}
-                              onChange={(e) => {
-                                const updated = [...newStockSlots];
-                                updated[idx].slotName = e.target.value;
-                                setNewStockSlots(updated);
-                              }}
-                              placeholder="เช่น จอ 1 (มือถือ/แท็บเล็ต)"
-                              className="w-full miki-input text-xs py-1.5"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-[#8D6E63]">รหัส PIN (ถ้ามี)</label>
-                            <input
-                              type="text"
-                              value={slot.slotPin}
-                              onChange={(e) => {
-                                const updated = [...newStockSlots];
-                                updated[idx].slotPin = e.target.value;
-                                setNewStockSlots(updated);
-                              }}
-                              placeholder="PIN เช่น 1234 (หรือเว้นว่าง)"
-                              className="w-full miki-input text-xs py-1.5 font-mono font-bold"
-                            />
-                          </div>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      /* Mode B: Detailed Screen & PIN Configuration */
+                      <div className="mt-3 space-y-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-[#8D6E63] flex items-center gap-1.5">
+                            <Key className="w-3.5 h-3.5 text-[#FFB4A2]" />
+                            <span>แก้ไขชื่อจอ, PIN, หรือแยกสินค้าเฉพาะจอ</span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={applyNetflixPreset}
+                            className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#FFF0EB] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFE8E0] active:scale-95 transition-all shadow-2xs flex items-center gap-1"
+                          >
+                            <Tv className="w-3 h-3" />
+                            <span>พรีเซ็ต Netflix รวม (3 มือถือ + 1 ทีวี)</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                          {newStockSlots.map((slot, idx) => (
+                            <div
+                              key={idx}
+                              className="p-3 rounded-2xl bg-white border border-[#FFD9CE] shadow-2xs space-y-2"
+                            >
+                              <div className="flex items-center justify-between text-xs font-bold text-[#5D4037]">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-6 h-6 rounded-lg bg-[#FFF0EB] text-[#E5989B] flex items-center justify-center text-[11px] font-extrabold">
+                                    {idx + 1}
+                                  </span>
+                                  <span>จอที่ {idx + 1}</span>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={slot.deviceType || newStockDefaultDevice}
+                                    onChange={(e) => {
+                                      const updated = [...newStockSlots];
+                                      updated[idx].deviceType = e.target.value;
+                                      setNewStockSlots(updated);
+                                    }}
+                                    className="text-[10px] font-bold py-1 px-2 rounded-lg border border-[#FFD9CE] bg-[#FFF8F3] text-[#6D4C41]"
+                                  >
+                                    <option value="MOBILE">มือถือ/แท็บเล็ต (Mobile)</option>
+                                    <option value="TV">สมาร์ททีวี (Smart TV)</option>
+                                    <option value="ALL">ทุกอุปกรณ์ (All)</option>
+                                  </select>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...newStockSlots];
+                                      updated[idx].status = updated[idx].status === 'LOCKED' ? 'AVAILABLE' : 'LOCKED';
+                                      setNewStockSlots(updated);
+                                    }}
+                                    className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all ${
+                                      slot.status === 'LOCKED'
+                                        ? 'bg-[#FFF1F2] text-[#E11D48] border-[#FECDD3]'
+                                        : 'bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]'
+                                    }`}
+                                  >
+                                    {slot.status === 'LOCKED' ? 'ล็อกไว้ (ไม่ขาย)' : 'พร้อมขาย'}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-[#8D6E63]">ชื่อจอ / โปรไฟล์</label>
+                                  <input
+                                    type="text"
+                                    value={slot.slotName}
+                                    onChange={(e) => {
+                                      const updated = [...newStockSlots];
+                                      updated[idx].slotName = e.target.value;
+                                      setNewStockSlots(updated);
+                                    }}
+                                    placeholder="เช่น จอ 1 (มือถือ/แท็บเล็ต)"
+                                    className="w-full miki-input text-xs py-1.5"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-[#8D6E63]">รหัส PIN (ถ้ามี)</label>
+                                  <input
+                                    type="text"
+                                    value={slot.slotPin}
+                                    onChange={(e) => {
+                                      const updated = [...newStockSlots];
+                                      updated[idx].slotPin = e.target.value;
+                                      setNewStockSlots(updated);
+                                    }}
+                                    placeholder="PIN เช่น 1234 (หรือเว้นว่าง)"
+                                    className="w-full miki-input text-xs py-1.5 font-mono font-bold"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Target product binding (e.g. cross-selling TV slot vs Mobile) */}
+                              <div className="space-y-1 mt-1.5">
+                                <label className="text-[10px] font-bold text-[#8D6E63]">
+                                  ผูกกับสินค้าเฉพาะจอ (กรณีแยกขาย เช่น จอ 4 แยกขายเป็น TV)
+                                </label>
+                                <select
+                                  value={slot.productId || ''}
+                                  onChange={(e) => {
+                                    const updated = [...newStockSlots];
+                                    updated[idx].productId = e.target.value;
+                                    setNewStockSlots(updated);
+                                  }}
+                                  className="w-full text-xs py-1.5 px-2.5 rounded-xl border border-[#FFD9CE] bg-white text-[#5D4037] font-medium"
+                                >
+                                  <option value="">
+                                    ตามสินค้าหลักที่เลือก ({products.find((p) => p.id === newStockProduct)?.name || 'สินค้าหลัก'})
+                                  </option>
+                                  {products
+                                    .filter((p) => p.id !== newStockProduct)
+                                    .map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

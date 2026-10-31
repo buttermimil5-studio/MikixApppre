@@ -300,6 +300,9 @@ export async function addStockAccountAction(data: {
       },
     });
 
+    revalidatePath('/');
+    revalidatePath('/admin');
+
     return { success: true, stockId: stock.id };
   } catch (err: any) {
     console.error('addStockAccountAction error:', err);
@@ -345,9 +348,9 @@ export async function updateStockSlotsAction(
 ) {
   const admin = await requireAdmin();
 
-  await prisma.$transaction(
-    slots.map((s) =>
-      prisma.accountProfileSlot.update({
+  await prisma.$transaction(async (tx) => {
+    for (const s of slots) {
+      await tx.accountProfileSlot.update({
         where: { id: s.id },
         data: {
           slotName: s.slotName.trim(),
@@ -356,9 +359,36 @@ export async function updateStockSlotsAction(
           productId: s.productId || null,
           status: s.status || undefined,
         },
-      })
-    )
-  );
+      });
+    }
+
+    // Synchronize AccountStock status with available slots
+    const availableSlots = await tx.accountProfileSlot.count({
+      where: {
+        accountStockId: stockId,
+        status: 'AVAILABLE',
+      },
+    });
+
+    const currentStock = await tx.accountStock.findUnique({
+      where: { id: stockId },
+      select: { status: true },
+    });
+
+    if (currentStock && currentStock.status !== 'SERVICING') {
+      if (availableSlots > 0 && currentStock.status === 'FULL') {
+        await tx.accountStock.update({
+          where: { id: stockId },
+          data: { status: 'ACTIVE' },
+        });
+      } else if (availableSlots === 0 && currentStock.status === 'ACTIVE') {
+        await tx.accountStock.update({
+          where: { id: stockId },
+          data: { status: 'FULL' },
+        });
+      }
+    }
+  });
 
   await prisma.auditLog.create({
     data: {
@@ -367,6 +397,9 @@ export async function updateStockSlotsAction(
       details: `แอดมิน ${admin.username} อัปเดตชื่อจอ, PIN, และประเภทอุปกรณ์ของสต็อก ${stockId}`,
     },
   });
+
+  revalidatePath('/');
+  revalidatePath('/admin');
 
   return { success: true };
 }
@@ -411,6 +444,9 @@ export async function recycleStockAccountAction(stockId: string, newPassword: st
       },
     });
   });
+
+  revalidatePath('/');
+  revalidatePath('/admin');
 
   return { success: true };
 }
@@ -884,6 +920,9 @@ export async function approveManualTopupAction(txId: string, approved: boolean, 
       },
     });
   });
+
+  revalidatePath('/');
+  revalidatePath('/admin');
 
   return { success: true };
 }

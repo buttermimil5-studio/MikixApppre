@@ -76,10 +76,10 @@ export default async function HomePage() {
   const { storeSetting, categories, contacts, rawProducts, bankAccounts } = storeData;
 
   const products = rawProducts.map((p: any) => {
-    // Count available slots across account stocks and directly assigned slots
+    // Count available slots across account stocks (inherited) and directly assigned slots
     const stockSlotsCount = p.accountStocks.reduce(
       (sum: number, stock: any) =>
-        sum + stock.profileSlots.filter((s: any) => !s.productId || s.productId === p.id).length,
+        sum + stock.profileSlots.filter((s: any) => !s.productId).length,
       0
     );
     const directAssignedSlotsCount = p.assignedSlots?.length || 0;

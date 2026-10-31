@@ -175,7 +175,7 @@ export function ProductModal({
         : `อีเมล: ${data.email}`,
       `รหัสผ่าน: ${data.password}`,
       `จอ / โปรไฟล์ที่ได้รับ: ${data.slotName}`,
-      data.slotPin ? `รหัส PIN ประจำจอ: ${data.slotPin}` : 'รหัส PIN: ไม่ต้องใช้ PIN (เข้าใช้งานได้ทันที)',
+      data.slotPin ? `รหัส PIN ประจำจอ: ${data.slotPin}` : '',
       data.hasAddon ? `บริการเสริม: ${data.addonName || 'รับประกันเคลม'} (คุ้มครองเรียบร้อย)` : '',
       data.expiresAt ? `วันหมดอายุ: ${new Date(data.expiresAt).toLocaleString('th-TH')}` : '',
       '',
@@ -313,46 +313,48 @@ export function ProductModal({
                     </button>
                   </div>
 
-                  {/* PIN Display */}
-                  <div className="flex items-center justify-between pt-2 border-t border-[#FFD9CE]/60">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#D97706] shadow-2xs">
-                        <Key className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-[#8D6E63] font-bold block">
-                          รหัส PIN หน้าจอ:
-                        </span>
-                        {orderResult.slotPin ? (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-base font-mono font-black text-[#B45309] bg-[#FEF3C7] px-2.5 py-0.5 rounded-lg border border-[#FDE68A] tracking-wider">
-                              {orderResult.slotPin}
-                            </span>
-                            <span className="text-[10px] text-[#B45309] font-medium">(PIN เข้าโปรไฟล์)</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs font-bold text-[#059669]">
-                            ไม่ต้องใช้ PIN (กดเข้าโปรไฟล์ได้ทันที)
+                  {/* PIN Display - Only shown if slot has PIN or product explicitly uses PIN */}
+                  {(orderResult.slotPin || product.hasProfilePin) && (
+                    <div className="flex items-center justify-between pt-2 border-t border-[#FFD9CE]/60">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#D97706] shadow-2xs">
+                          <Key className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[#8D6E63] font-bold block">
+                            รหัส PIN หน้าจอ:
                           </span>
-                        )}
+                          {orderResult.slotPin ? (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-base font-mono font-black text-[#B45309] bg-[#FEF3C7] px-2.5 py-0.5 rounded-lg border border-[#FDE68A] tracking-wider">
+                                {orderResult.slotPin}
+                              </span>
+                              <span className="text-[10px] text-[#B45309] font-medium">(PIN เข้าโปรไฟล์)</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-bold text-[#059669]">
+                              ไม่ต้องใช้ PIN (กดเข้าโปรไฟล์ได้ทันที)
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      {orderResult.slotPin && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(orderResult.slotPin!, 'pin')}
+                          className="px-2.5 py-1.5 rounded-xl bg-white border border-[#FFD9CE] text-[11px] font-bold text-[#B45309] hover:bg-[#FEF3C7] flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                          title="คัดลอก PIN"
+                        >
+                          {copiedField === 'pin' ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                          <span>{copiedField === 'pin' ? 'คัดลอกแล้ว' : 'คัดลอก PIN'}</span>
+                        </button>
+                      )}
                     </div>
-                    {orderResult.slotPin && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(orderResult.slotPin!, 'pin')}
-                        className="px-2.5 py-1.5 rounded-xl bg-white border border-[#FFD9CE] text-[11px] font-bold text-[#B45309] hover:bg-[#FEF3C7] flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
-                        title="คัดลอก PIN"
-                      >
-                        {copiedField === 'pin' ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                        <span>{copiedField === 'pin' ? 'คัดลอกแล้ว' : 'คัดลอก PIN'}</span>
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 {/* Add-on Banner in Ticket if Purchased */}
@@ -765,7 +767,7 @@ export function ProductModal({
 
               {/* Screen / Slot & PIN Type Badge */}
               <div className="p-3.5 rounded-2xl bg-[#FFF5F2] border border-[#FFD9CE] flex items-center gap-2.5 text-xs">
-                {product.hasProfilePin || product.defaultSlotCount > 1 ? (
+                {product.hasProfilePin ? (
                   <>
                     <div className="w-8 h-8 rounded-xl bg-white border border-[#FFD9CE] flex items-center justify-center text-[#E5989B] flex-shrink-0 shadow-2xs">
                       <Monitor className="w-4 h-4" />
@@ -783,6 +785,27 @@ export function ProductModal({
                       </div>
                       <span className="text-[11px] text-[#8D6E63] leading-relaxed block mt-0.5">
                         ระบบจัดสรรคิวจอที่ว่างและรหัส PIN ให้คุณอัตโนมัติทันทีหลังกดซื้อ (ไม่ต้องเลือกจอเอง)
+                      </span>
+                    </div>
+                  </>
+                ) : product.defaultSlotCount > 1 ? (
+                  <>
+                    <div className="w-8 h-8 rounded-xl bg-white border border-[#C8E6C9] flex items-center justify-center text-[#2E7D32] flex-shrink-0 shadow-2xs">
+                      <Monitor className="w-4 h-4" />
+                    </div>
+                    <div className="text-[#2E7D32] flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-extrabold text-[#1B5E20]">
+                          สิทธิ์แบบหารจอ ({product.defaultSlotCount} สิทธิ์ • ไม่ต้องใช้ PIN)
+                        </span>
+                        {product.sharingTypeNote && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-white text-[#1B5E20] border border-[#C8E6C9] shadow-2xs">
+                            {product.sharingTypeNote}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-[#2E7D32]/80 leading-relaxed block mt-0.5">
+                        ระบบจัดสรรสิทธิ์ให้อัตโนมัติ ล็อกอินแล้วเข้าดูตามชื่อจอได้ทันทีโดยไม่ต้องใส่ PIN
                       </span>
                     </div>
                   </>
