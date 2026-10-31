@@ -1764,7 +1764,12 @@ export function AdminClient({
                     </span>
 
                     {/* Whole-Account Cutoff Time (When the last screen/slot expires) */}
-                    {stock.accountCutoffTime && (
+                    {isServicing ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3] font-black shadow-xs">
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>หมดอายุรอบใช้งานแล้ว • รอเปลี่ยนรหัส & Recycle</span>
+                      </span>
+                    ) : stock.accountCutoffTime ? (
                       <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#FFE8D6] text-[#6D4C41] border border-[#FFCDB2] font-black shadow-xs">
                         <Clock className="w-3.5 h-3.5 text-[#D84315]" />
                         <span>
@@ -1776,7 +1781,7 @@ export function AdminClient({
                           น. (เมื่อจอสุดท้ายหมดอายุ)
                         </span>
                       </span>
-                    )}
+                    ) : null}
 
                     {/* Quick edit slots & PINs button */}
                     <button
@@ -1841,7 +1846,15 @@ export function AdminClient({
                             <span className="truncate">{slot.slotName}</span>
                           </span>
                           <span className="text-[9px] uppercase px-1.5 py-0.5 rounded-md bg-white/80 border border-current">
-                            {slot.status === 'LOCKED' ? 'ล็อกไว้' : slot.status === 'AVAILABLE' ? 'ว่าง' : slot.status}
+                            {slot.status === 'LOCKED'
+                              ? 'ล็อกไว้'
+                              : slot.status === 'AVAILABLE'
+                              ? 'ว่าง'
+                              : slot.status === 'EXPIRED'
+                              ? 'หมดอายุ'
+                              : slot.status === 'ASSIGNED'
+                              ? 'ใช้งานอยู่'
+                              : slot.status}
                           </span>
                         </div>
                         {slot.slotPin ? (

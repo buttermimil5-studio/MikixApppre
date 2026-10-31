@@ -18,9 +18,114 @@ async function requireAdmin() {
   return user;
 }
 
+/**
+ * Automatically syncs expired orders and account stocks across the entire store:
+ * 1. Finds all ACTIVE orders that have passed their expiresAt timestamp
+ * 2. Sets Order.status = 'EXPIRED' and AccountProfileSlot.status = 'EXPIRED'
+ * 3. Checks affected AccountStocks: if there are 0 remaining ACTIVE orders,
+ *    moves AccountStock.status to 'SERVICING' (queue waiting for password change & recycle)
+ * 4. Checks any orphan stocks with status IN ('ACTIVE', 'FULL') that have 0 active orders
+ *    and at least one expired slot -> transitions them to 'SERVICING'
+ */
+export async function syncExpiredOrdersAndStocks() {
+  try {
+    const now = new Date();
+
+    // 1. Find all active orders where expiresAt <= now
+    const expiredOrders = await prisma.order.findMany({
+      where: {
+        status: 'ACTIVE',
+        expiresAt: { lte: now },
+      },
+      include: {
+        profileSlot: true,
+      },
+    });
+
+    if (expiredOrders.length > 0) {
+      const affectedStockIds = new Set<string>();
+
+      for (const exp of expiredOrders) {
+        await prisma.$transaction(async (tx) => {
+          await tx.order.update({
+            where: { id: exp.id },
+            data: { status: 'EXPIRED' },
+          });
+
+          if (exp.profileSlotId) {
+            await tx.accountProfileSlot.update({
+              where: { id: exp.profileSlotId },
+              data: { status: 'EXPIRED' },
+            });
+          }
+        });
+
+        if (exp.profileSlot?.accountStockId) {
+          affectedStockIds.add(exp.profileSlot.accountStockId);
+        }
+      }
+
+      // Check each affected stock: if no active orders remain, move to SERVICING
+      for (const stockId of affectedStockIds) {
+        const remainingActive = await prisma.order.count({
+          where: {
+            profileSlot: { accountStockId: stockId },
+            status: 'ACTIVE',
+          },
+        });
+
+        if (remainingActive === 0) {
+          await prisma.accountStock.update({
+            where: { id: stockId },
+            data: { status: 'SERVICING' },
+          });
+        }
+      }
+    }
+
+    // 2. Also check any stock currently ACTIVE/FULL that has 0 active orders
+    // but has slots that were EXPIRED (i.e. finished rentals waiting for password change)
+    const finishedStocks = await prisma.accountStock.findMany({
+      where: {
+        status: { in: ['ACTIVE', 'FULL'] },
+        profileSlots: {
+          some: {
+            status: 'EXPIRED',
+          },
+        },
+      },
+      include: {
+        profileSlots: {
+          include: {
+            orders: {
+              where: { status: 'ACTIVE' },
+            },
+          },
+        },
+      },
+    });
+
+    for (const stock of finishedStocks) {
+      const activeCount = stock.profileSlots.reduce(
+        (sum, slot) => sum + slot.orders.length,
+        0
+      );
+      if (activeCount === 0) {
+        await prisma.accountStock.update({
+          where: { id: stock.id },
+          data: { status: 'SERVICING' },
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error syncing expired orders and stocks:', error);
+  }
+}
+
 // 1. Dashboard Metrics (Daily, Monthly, Yearly Sales & Bestsellers)
 export async function getAdminDashboardStats() {
   await requireAdmin();
+  await syncExpiredOrdersAndStocks();
 
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -171,6 +276,7 @@ export async function adjustUserCreditAction(userId: string, delta: number, reas
 // 3. Stock Management & Servicing Queue (Recycle expired accounts)
 export async function getAdminStocks() {
   await requireAdmin();
+  await syncExpiredOrdersAndStocks();
 
   const stocks = await prisma.accountStock.findMany({
     include: {
@@ -178,7 +284,7 @@ export async function getAdminStocks() {
       profileSlots: {
         include: {
           orders: {
-            where: { status: 'ACTIVE' },
+            where: { status: { in: ['ACTIVE', 'EXPIRED'] } },
             include: { user: true },
             take: 1,
             orderBy: { purchasedAt: 'desc' },
@@ -193,9 +299,9 @@ export async function getAdminStocks() {
   return stocks.map((s) => {
     const creds = decryptStockCredentials(s);
 
-    // Calculate whole-account latest cutoff time (when the last slot expires)
+    // Calculate whole-account latest cutoff time (when the last active slot expires)
     const activeSlotsWithOrder = s.profileSlots.filter(
-      (slot) => slot.orders && slot.orders.length > 0 && slot.orders[0].expiresAt
+      (slot) => slot.orders && slot.orders.length > 0 && slot.orders[0].status === 'ACTIVE' && slot.orders[0].expiresAt
     );
     let accountCutoffTime: string | null = null;
     if (activeSlotsWithOrder.length > 0) {
@@ -752,6 +858,7 @@ export async function updateStoreSettingsAction(data: Partial<{
 // 6. Orders & Stock Cut Management (Who bought what account/email/pass/screen)
 export async function getAdminOrders() {
   await requireAdmin();
+  await syncExpiredOrdersAndStocks();
   const orders = await prisma.order.findMany({
     include: {
       user: true,
