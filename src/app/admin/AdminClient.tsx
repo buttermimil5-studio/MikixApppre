@@ -70,6 +70,7 @@ import {
   Video,
   Search,
   Flame,
+  Copy,
 } from 'lucide-react';
 import { BakeryLoadingModal } from '@/components/BakeryLoadingModal';
 import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
@@ -140,11 +141,90 @@ export function AdminClient({
 
   // Search & Pagination states
   const [stockSearchQuery, setStockSearchQuery] = useState('');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SERVICING' | 'FULL'>('ALL');
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'ALL' | 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED'>('ALL');
   const [visibleStocksCount, setVisibleStocksCount] = useState(10);
   const [visibleOrdersCount, setVisibleOrdersCount] = useState(10);
   const [visibleUsersCount, setVisibleUsersCount] = useState(10);
   const [visibleTopupsCount, setVisibleTopupsCount] = useState(10);
   const [visibleLogsCount, setVisibleLogsCount] = useState(15);
+
+  // Dashboard Accounts Quick Modal state
+  const [dashboardModalType, setDashboardModalType] = useState<'ACTIVE' | 'EXPIRING_SOON' | 'SERVICING' | null>(null);
+  const [dashboardModalSearch, setDashboardModalSearch] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyText = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => {
+      setCopiedId((prev) => (prev === id ? null : prev));
+    }, 2000);
+  };
+
+  const formatRemainingTime = (expiresAt: string | Date) => {
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) {
+      return { text: 'หมดอายุแล้ว', isExpired: true, isUrgent: true };
+    }
+    const totalHours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) {
+      return {
+        text: `เหลืออีก ${days} วัน ${hours} ชม.`,
+        isExpired: false,
+        isUrgent: days <= 1,
+      };
+    }
+    return {
+      text: `เหลืออีก ${hours} ชม. ${minutes} นาที`,
+      isExpired: false,
+      isUrgent: true,
+    };
+  };
+
+  const switchDashboardModalType = async (type: 'ACTIVE' | 'EXPIRING_SOON' | 'SERVICING') => {
+    setDashboardModalType(type);
+    setDashboardModalSearch('');
+
+    if (type === 'SERVICING') {
+      if (!loadedTabs.has('STOCKS') || stocks.length === 0) {
+        setTabLoading(true);
+        setLoadingMessage('กำลังโหลดคลังสต็อกบัญชีและสินค้า...');
+        try {
+          const [stk, prods] = await Promise.all([
+            getAdminStocks(),
+            products.length === 0 ? getAdminProducts() : Promise.resolve(products),
+          ]);
+          setStocks(stk);
+          if (products.length === 0) setProducts(prods);
+          setLoadedTabs((prev) => new Set(prev).add('STOCKS'));
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setTabLoading(false);
+        }
+      }
+    } else {
+      if (!loadedTabs.has('ORDERS') || orders.length === 0) {
+        setTabLoading(true);
+        setLoadingMessage('กำลังโหลดรายการคำสั่งซื้อและการตัดสต็อก...');
+        try {
+          const ords = await getAdminOrders();
+          setOrders(ords);
+          setLoadedTabs((prev) => new Set(prev).add('ORDERS'));
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setTabLoading(false);
+        }
+      }
+    }
+  };
 
   const handleTabClick = async (tabId: string) => {
     setActiveTab(tabId as any);
@@ -1003,6 +1083,11 @@ export function AdminClient({
   };
 
   const filteredStocks = stocks.filter((stock) => {
+    if (stockStatusFilter !== 'ALL') {
+      if (stockStatusFilter === 'ACTIVE' && stock.status !== 'ACTIVE') return false;
+      if (stockStatusFilter === 'SERVICING' && stock.status !== 'SERVICING') return false;
+      if (stockStatusFilter === 'FULL' && stock.status !== 'FULL') return false;
+    }
     if (!stockSearchQuery.trim()) return true;
     const q = stockSearchQuery.trim().toLowerCase();
     return (
@@ -1016,8 +1101,32 @@ export function AdminClient({
       )
     );
   });
+
+  const filteredOrders = orders.filter((ord: any) => {
+    if (orderStatusFilter !== 'ALL') {
+      if (orderStatusFilter === 'ACTIVE' && ord.status !== 'ACTIVE') return false;
+      if (orderStatusFilter === 'EXPIRED' && ord.status !== 'EXPIRED') return false;
+      if (orderStatusFilter === 'EXPIRING_SOON') {
+        const exp = new Date(ord.expiresAt).getTime();
+        const now = Date.now();
+        const in24h = now + 24 * 60 * 60 * 1000;
+        if (ord.status !== 'ACTIVE' || exp > in24h) return false;
+      }
+    }
+    if (!orderSearchQuery.trim()) return true;
+    const q = orderSearchQuery.trim().toLowerCase();
+    return (
+      ord.orderNumber.toLowerCase().includes(q) ||
+      ord.productName.toLowerCase().includes(q) ||
+      ord.email.toLowerCase().includes(q) ||
+      ord.buyerUsername.toLowerCase().includes(q) ||
+      (ord.buyerProfileName && ord.buyerProfileName.toLowerCase().includes(q)) ||
+      ord.slotName.toLowerCase().includes(q)
+    );
+  });
+
   const displayedStocks = filteredStocks.slice(0, visibleStocksCount);
-  const displayedOrders = orders.slice(0, visibleOrdersCount);
+  const displayedOrders = filteredOrders.slice(0, visibleOrdersCount);
   const displayedUsers = users.slice(0, visibleUsersCount);
   const displayedTopups = topups.slice(0, visibleTopupsCount);
   const displayedLogs = auditLogs.slice(0, visibleLogsCount);
@@ -1110,29 +1219,65 @@ export function AdminClient({
 
           {/* Subscriptions Monitor */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="miki-card p-4 bg-white border-[#E8DCCF] flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => switchDashboardModalType('ACTIVE')}
+              className="miki-card p-4.5 bg-white border-[#E8DCCF] hover:border-[#059669] hover:shadow-md transition-all text-left flex items-center justify-between group cursor-pointer"
+            >
               <div>
-                <p className="text-xs text-[#8D6E63] font-bold">บัญชีกำลังใช้งาน (Active)</p>
-                <p className="text-xl font-black text-[#059669]">{stats.subscriptions.active} บัญชี</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#059669] animate-pulse" />
+                  <p className="text-xs text-[#8D6E63] font-bold">บัญชีกำลังใช้งาน (Active)</p>
+                </div>
+                <p className="text-2xl font-black text-[#059669] mt-1">{stats.subscriptions.active} บัญชี</p>
+                <span className="text-[11px] text-[#059669] font-medium group-hover:underline flex items-center gap-1 mt-1">
+                  คลิกดูรายชื่อบัญชี ➔
+                </span>
               </div>
-              <Clock className="w-7 h-7 text-[#059669]/30" />
-            </div>
+              <div className="w-12 h-12 rounded-2xl bg-[#ECFDF5] border border-[#A7F3D0] flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Clock className="w-6 h-6 text-[#059669]" />
+              </div>
+            </button>
 
-            <div className="miki-card p-4 bg-[#FFFDF5] border-[#FDE68A] flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => switchDashboardModalType('EXPIRING_SOON')}
+              className="miki-card p-4.5 bg-[#FFFDF5] border-[#FDE68A] hover:border-[#D97706] hover:shadow-md transition-all text-left flex items-center justify-between group cursor-pointer"
+            >
               <div>
-                <p className="text-xs text-[#D97706] font-bold">ใกล้หมดอายุใน 24 ชม.</p>
-                <p className="text-xl font-black text-[#D97706]">{stats.subscriptions.expiringSoon} บัญชี</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#D97706] animate-pulse" />
+                  <p className="text-xs text-[#D97706] font-bold">ใกล้หมดอายุใน 24 ชม.</p>
+                </div>
+                <p className="text-2xl font-black text-[#D97706] mt-1">{stats.subscriptions.expiringSoon} บัญชี</p>
+                <span className="text-[11px] text-[#D97706] font-medium group-hover:underline flex items-center gap-1 mt-1">
+                  คลิกดูรายชื่อบัญชี ➔
+                </span>
               </div>
-              <AlertTriangle className="w-7 h-7 text-[#D97706]/30" />
-            </div>
+              <div className="w-12 h-12 rounded-2xl bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-center group-hover:scale-110 transition-transform">
+                <AlertTriangle className="w-6 h-6 text-[#D97706]" />
+              </div>
+            </button>
 
-            <div className="miki-card p-4 bg-[#FFF1F2] border-[#FECDD3] flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => switchDashboardModalType('SERVICING')}
+              className="miki-card p-4.5 bg-[#FFF1F2] border-[#FECDD3] hover:border-[#E11D48] hover:shadow-md transition-all text-left flex items-center justify-between group cursor-pointer"
+            >
               <div>
-                <p className="text-xs text-[#E11D48] font-bold">คิวรอเปลี่ยนรหัส (Servicing)</p>
-                <p className="text-xl font-black text-[#E11D48]">{stats.subscriptions.servicingQueue} บัญชี</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#E11D48] animate-pulse" />
+                  <p className="text-xs text-[#E11D48] font-bold">คิวรอเปลี่ยนรหัส (Servicing)</p>
+                </div>
+                <p className="text-2xl font-black text-[#E11D48] mt-1">{stats.subscriptions.servicingQueue} บัญชี</p>
+                <span className="text-[11px] text-[#E11D48] font-medium group-hover:underline flex items-center gap-1 mt-1">
+                  คลิกดูรายชื่อบัญชี ➔
+                </span>
               </div>
-              <RotateCcw className="w-7 h-7 text-[#E11D48]/30" />
-            </div>
+              <div className="w-12 h-12 rounded-2xl bg-[#FFE4E6] border border-[#FECDD3] flex items-center justify-center group-hover:scale-110 transition-transform">
+                <RotateCcw className="w-6 h-6 text-[#E11D48]" />
+              </div>
+            </button>
           </div>
 
           {/* Bestselling Products */}
@@ -1176,6 +1321,97 @@ export function AdminClient({
             <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#E5989B] border border-[#FFD9CE]">
               ทั้งหมด {orders.length} รายการ
             </span>
+          </div>
+
+          {/* Order Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#FFFDF7] p-3 rounded-2xl border border-[#E8DCCF]">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderStatusFilter('ALL');
+                  setVisibleOrdersCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  orderStatusFilter === 'ALL'
+                    ? 'bg-[#5D4037] text-white shadow-xs'
+                    : 'bg-white text-[#8D6E63] border border-[#E8DCCF] hover:bg-[#FFF8F3]'
+                }`}
+              >
+                ทั้งหมด ({orders.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderStatusFilter('ACTIVE');
+                  setVisibleOrdersCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 ${
+                  orderStatusFilter === 'ACTIVE'
+                    ? 'bg-[#059669] text-white shadow-xs'
+                    : 'bg-white text-[#059669] border border-[#A7F3D0] hover:bg-[#ECFDF5]'
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span>กำลังใช้งาน ({orders.filter((o: any) => o.status === 'ACTIVE').length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderStatusFilter('EXPIRING_SOON');
+                  setVisibleOrdersCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 ${
+                  orderStatusFilter === 'EXPIRING_SOON'
+                    ? 'bg-[#D97706] text-white shadow-xs'
+                    : 'bg-white text-[#D97706] border border-[#FDE68A] hover:bg-[#FFFDF5]'
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3" />
+                <span>ใกล้หมดอายุ 24 ชม.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderStatusFilter('EXPIRED');
+                  setVisibleOrdersCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  orderStatusFilter === 'EXPIRED'
+                    ? 'bg-[#E11D48] text-white shadow-xs'
+                    : 'bg-white text-[#8D6E63] border border-[#E8DCCF] hover:bg-[#FFF8F3]'
+                }`}
+              >
+                หมดอายุแล้ว ({orders.filter((o: any) => o.status === 'EXPIRED').length})
+              </button>
+            </div>
+
+            <div className="relative flex-1 sm:max-w-xs">
+              <Search className="w-4 h-4 text-[#A1887F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={orderSearchQuery}
+                onChange={(e) => {
+                  setOrderSearchQuery(e.target.value);
+                  setVisibleOrdersCount(10);
+                }}
+                placeholder="ค้นหาเลขออเดอร์, อีเมล, ผู้ซื้อ..."
+                className="w-full pl-9 pr-8 py-2 rounded-full bg-white border border-[#E8DCCF] text-xs font-medium text-[#5D4037] placeholder-[#A1887F] focus:outline-none focus:border-[#FFB4A2] shadow-xs"
+              />
+              {orderSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderSearchQuery('');
+                    setVisibleOrdersCount(10);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-[#FFF0EB] text-[#8D6E63]"
+                  title="ล้างคำค้นหา"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="miki-card p-6 bg-white border border-[#E8DCCF] overflow-x-auto">
@@ -1258,13 +1494,21 @@ export function AdminClient({
               </table>
             ) : (
               <div className="text-center py-12 text-[#8D6E63] space-y-2">
-                <p className="font-bold text-sm">ยังไม่มีรายการสั่งซื้อและตัดสต็อกในระบบ</p>
-                <p className="text-xs">เมื่อลูกค้าหรือตัวแทนกดรับบัญชี ข้อมูลการตัดสต็อกจะปรากฏที่นี่</p>
+                <p className="font-bold text-sm">
+                  {orderSearchQuery || orderStatusFilter !== 'ALL'
+                    ? 'ไม่พบรายการคำสั่งซื้อที่ตรงกับตัวกรอง'
+                    : 'ยังไม่มีรายการสั่งซื้อและตัดสต็อกในระบบ'}
+                </p>
+                <p className="text-xs">
+                  {orderSearchQuery || orderStatusFilter !== 'ALL'
+                    ? 'ลองเปลี่ยนตัวกรองสถานะ หรือล้างคำค้นหา'
+                    : 'เมื่อลูกค้าหรือตัวแทนกดรับบัญชี ข้อมูลการตัดสต็อกจะปรากฏที่นี่'}
+                </p>
               </div>
             )}
 
             {/* Pagination See More Button */}
-            {orders.length > displayedOrders.length && (
+            {filteredOrders.length > displayedOrders.length && (
               <div className="text-center pt-4 border-t border-[#F5EBE1]">
                 <button
                   type="button"
@@ -1273,7 +1517,7 @@ export function AdminClient({
                 >
                   <span>ดูคำสั่งซื้อเพิ่มเติม (+10 รายการ)</span>
                   <span className="text-[10px] text-[#8D6E63] font-normal">
-                    (แสดง {displayedOrders.length} จาก {orders.length} รายการ)
+                    (แสดง {displayedOrders.length} จาก {filteredOrders.length} รายการ)
                   </span>
                 </button>
               </div>
@@ -1321,9 +1565,70 @@ export function AdminClient({
             </div>
           )}
 
-          {/* Email & Account Search Bar */}
+          {/* Email & Account Search and Filter Bar */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#FFFDF7] p-3 rounded-2xl border border-[#E8DCCF]">
-            <div className="relative flex-1 sm:max-w-md">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setStockStatusFilter('ALL');
+                  setVisibleStocksCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  stockStatusFilter === 'ALL'
+                    ? 'bg-[#5D4037] text-white shadow-xs'
+                    : 'bg-white text-[#8D6E63] border border-[#E8DCCF] hover:bg-[#FFF8F3]'
+                }`}
+              >
+                ทั้งหมด ({stocks.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStockStatusFilter('ACTIVE');
+                  setVisibleStocksCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 ${
+                  stockStatusFilter === 'ACTIVE'
+                    ? 'bg-[#059669] text-white shadow-xs'
+                    : 'bg-white text-[#059669] border border-[#A7F3D0] hover:bg-[#ECFDF5]'
+                }`}
+              >
+                <Clock className="w-3 h-3" />
+                <span>พร้อมขาย ({stocks.filter((s: any) => s.status === 'ACTIVE').length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStockStatusFilter('SERVICING');
+                  setVisibleStocksCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 ${
+                  stockStatusFilter === 'SERVICING'
+                    ? 'bg-[#E11D48] text-white shadow-xs'
+                    : 'bg-white text-[#E11D48] border border-[#FECDD3] hover:bg-[#FFF1F2]'
+                }`}
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>รอเปลี่ยนรหัส ({stocks.filter((s: any) => s.status === 'SERVICING').length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStockStatusFilter('FULL');
+                  setVisibleStocksCount(10);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  stockStatusFilter === 'FULL'
+                    ? 'bg-[#8D6E63] text-white shadow-xs'
+                    : 'bg-white text-[#8D6E63] border border-[#E8DCCF] hover:bg-[#FFF8F3]'
+                }`}
+              >
+                เต็มแล้ว ({stocks.filter((s: any) => s.status === 'FULL').length})
+              </button>
+            </div>
+
+            <div className="relative flex-1 sm:max-w-xs">
               <Search className="w-4 h-4 text-[#A1887F] absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -1332,7 +1637,7 @@ export function AdminClient({
                   setStockSearchQuery(e.target.value);
                   setVisibleStocksCount(10);
                 }}
-                placeholder="ค้นหาอีเมล, เบอร์โทรศัพท์, ชื่อแอป, หมายเหตุ, ผู้ซื้อ..."
+                placeholder="ค้นหาอีเมล, เบอร์โทรศัพท์, ชื่อแอป, หมายเหตุ..."
                 className="w-full pl-9 pr-8 py-2 rounded-full bg-white border border-[#E8DCCF] text-xs font-medium text-[#5D4037] placeholder-[#A1887F] focus:outline-none focus:border-[#FFB4A2] shadow-xs"
               />
               {stockSearchQuery && (
@@ -1349,10 +1654,6 @@ export function AdminClient({
                 </button>
               )}
             </div>
-
-            <span className="text-xs font-bold text-[#8D6E63] text-right">
-              พบ {filteredStocks.length} บัญชี {stockSearchQuery && `(จากคำค้นหา "${stockSearchQuery}")`}
-            </span>
           </div>
 
           {/* Stocks Table */}
@@ -4150,6 +4451,410 @@ export function AdminClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL: DASHBOARD QUICK VIEW ACCOUNTS */}
+      {dashboardModalType && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-3xl bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Sticky Header */}
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    dashboardModalType === 'ACTIVE'
+                      ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                      : dashboardModalType === 'EXPIRING_SOON'
+                      ? 'bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]'
+                      : 'bg-[#FFE4E6] text-[#E11D48] border border-[#FECDD3]'
+                  }`}
+                >
+                  {dashboardModalType === 'ACTIVE' && <Clock className="w-5 h-5" />}
+                  {dashboardModalType === 'EXPIRING_SOON' && <AlertTriangle className="w-5 h-5" />}
+                  {dashboardModalType === 'SERVICING' && <RotateCcw className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                    <span>
+                      {dashboardModalType === 'ACTIVE' && 'บัญชีกำลังใช้งาน (Active)'}
+                      {dashboardModalType === 'EXPIRING_SOON' && 'บัญชีใกล้หมดอายุใน 24 ชม.'}
+                      {dashboardModalType === 'SERVICING' && 'คิวรอเปลี่ยนรหัสผ่าน (Servicing)'}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        dashboardModalType === 'ACTIVE'
+                          ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                          : dashboardModalType === 'EXPIRING_SOON'
+                          ? 'bg-[#FEF3C7] text-[#D97706] border border-[#FDE68A]'
+                          : 'bg-[#FFE4E6] text-[#E11D48] border border-[#FECDD3]'
+                      }`}
+                    >
+                      {dashboardModalType === 'ACTIVE' && `${stats.subscriptions.active} บัญชี`}
+                      {dashboardModalType === 'EXPIRING_SOON' && `${stats.subscriptions.expiringSoon} บัญชี`}
+                      {dashboardModalType === 'SERVICING' && `${stats.subscriptions.servicingQueue} บัญชี`}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-[#8D6E63] mt-0.5">
+                    {dashboardModalType === 'ACTIVE' && 'รายการบัญชีและจอที่ลูกค้ากำลังใช้งานอยู่ในปัจจุบัน'}
+                    {dashboardModalType === 'EXPIRING_SOON' && 'รายการบัญชีและจอที่กำลังจะหมดอายุในอีก 24 ชั่วโมง'}
+                    {dashboardModalType === 'SERVICING' && 'บัญชีที่หมดอายุแล้ว รอนำไปเปลี่ยนรหัสผ่านเพื่อนำกลับมาขายต่อ'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDashboardModalType(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Switcher Tabs & Search Inside Modal */}
+            <div className="p-4 bg-[#FAF7F2] border-b border-[#F5EBE1] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5 bg-white p-1 rounded-2xl border border-[#E8DCCF]">
+                <button
+                  type="button"
+                  onClick={() => switchDashboardModalType('ACTIVE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    dashboardModalType === 'ACTIVE'
+                      ? 'bg-[#059669] text-white shadow-xs'
+                      : 'text-[#8D6E63] hover:text-[#5D4037]'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>กำลังใช้งาน ({stats.subscriptions.active})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchDashboardModalType('EXPIRING_SOON')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    dashboardModalType === 'EXPIRING_SOON'
+                      ? 'bg-[#D97706] text-white shadow-xs'
+                      : 'text-[#8D6E63] hover:text-[#5D4037]'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>ใกล้หมดอายุ ({stats.subscriptions.expiringSoon})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchDashboardModalType('SERVICING')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    dashboardModalType === 'SERVICING'
+                      ? 'bg-[#E11D48] text-white shadow-xs'
+                      : 'text-[#8D6E63] hover:text-[#5D4037]'
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>รอเปลี่ยนรหัส ({stats.subscriptions.servicingQueue})</span>
+                </button>
+              </div>
+
+              <div className="relative flex-1 sm:max-w-xs">
+                <Search className="w-3.5 h-3.5 text-[#A1887F] absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={dashboardModalSearch}
+                  onChange={(e) => setDashboardModalSearch(e.target.value)}
+                  placeholder="ค้นหาอีเมล, ผู้ซื้อ, ชื่อแอป..."
+                  className="w-full pl-8 pr-7 py-1.5 rounded-full bg-white border border-[#E8DCCF] text-xs font-medium text-[#5D4037] placeholder-[#A1887F] focus:outline-none focus:border-[#FFB4A2]"
+                />
+                {dashboardModalSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setDashboardModalSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8D6E63] hover:text-[#5D4037]"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Body / Items List */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-3">
+              {/* SERVICING LIST */}
+              {dashboardModalType === 'SERVICING' && (() => {
+                const q = dashboardModalSearch.trim().toLowerCase();
+                const servicingList = stocks
+                  .filter((s) => s.status === 'SERVICING')
+                  .filter((s) => {
+                    if (!q) return true;
+                    return (
+                      s.email.toLowerCase().includes(q) ||
+                      s.productName.toLowerCase().includes(q) ||
+                      (s.notes && s.notes.toLowerCase().includes(q))
+                    );
+                  });
+
+                if (servicingList.length === 0) {
+                  return (
+                    <div className="text-center py-12 space-y-3">
+                      <div className="w-14 h-14 mx-auto rounded-3xl bg-[#ECFDF5] border border-[#A7F3D0] flex items-center justify-center text-[#059669]">
+                        <CheckCircle2 className="w-7 h-7" />
+                      </div>
+                      <p className="font-bold text-sm text-[#5D4037]">
+                        {q ? `ไม่พบบัญชีรอเปลี่ยนรหัสที่ตรงกับ "${dashboardModalSearch}"` : 'ยอดเยี่ยม! ไม่มีบัญชีค้างในคิวรอเปลี่ยนรหัส'}
+                      </p>
+                      <p className="text-xs text-[#8D6E63]">
+                        บัญชีสต็อกทั้งหมดได้รับการอัปเดตและพร้อมจำหน่ายตามปกติ
+                      </p>
+                    </div>
+                  );
+                }
+
+                return servicingList.map((stock) => (
+                  <div
+                    key={stock.id}
+                    className="p-4 rounded-2xl bg-[#FFFBFB] border border-[#FFD9CE] space-y-3 hover:border-[#FFB4A2] transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#FFD9CE]/60 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-sm text-[#5D4037]">{stock.productName}</span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]">
+                          รอเปลี่ยนรหัสผ่าน
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDashboardModalType(null);
+                          setRecycleStock(stock);
+                          setRecycleNewPassword('');
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-2xs active:scale-95 transition-all"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>เปลี่ยนรหัส & Recycle นำเข้าสต็อก</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-white border border-[#E8DCCF] flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold text-[#8D6E63] block">อีเมล / เบอร์โทร:</span>
+                          <span className="font-mono font-bold text-[#5D4037] select-all">{stock.email}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(stock.email, `serv-email-${stock.id}`)}
+                          className="p-1 rounded-lg hover:bg-[#FFF0EB] text-[#8D6E63]"
+                          title="คัดลอกอีเมล"
+                        >
+                          {copiedId === `serv-email-${stock.id}` ? <Check className="w-3.5 h-3.5 text-[#059669]" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white border border-[#E8DCCF] flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold text-[#8D6E63] block">รหัสผ่านปัจจุบัน:</span>
+                          <span className="font-mono font-bold text-[#E5989B] select-all">{stock.password}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyText(stock.password, `serv-pwd-${stock.id}`)}
+                          className="p-1 rounded-lg hover:bg-[#FFF0EB] text-[#8D6E63]"
+                          title="คัดลอกรหัสผ่าน"
+                        >
+                          {copiedId === `serv-pwd-${stock.id}` ? <Check className="w-3.5 h-3.5 text-[#059669]" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {stock.notes && (
+                      <p className="text-[11px] text-[#8D6E63] bg-white/70 px-3 py-1.5 rounded-xl border border-[#E8DCCF]/60">
+                        <span className="font-bold">หมายเหตุ:</span> {stock.notes}
+                      </p>
+                    )}
+                  </div>
+                ));
+              })()}
+
+              {/* ACTIVE OR EXPIRING_SOON LIST */}
+              {(dashboardModalType === 'ACTIVE' || dashboardModalType === 'EXPIRING_SOON') && (() => {
+                const q = dashboardModalSearch.trim().toLowerCase();
+                const now = Date.now();
+                const in24h = now + 24 * 60 * 60 * 1000;
+
+                const filtered = orders.filter((ord: any) => {
+                  if (dashboardModalType === 'EXPIRING_SOON') {
+                    const exp = new Date(ord.expiresAt).getTime();
+                    if (ord.status !== 'ACTIVE' || exp > in24h) return false;
+                  } else {
+                    if (ord.status !== 'ACTIVE') return false;
+                  }
+
+                  if (!q) return true;
+                  return (
+                    ord.orderNumber.toLowerCase().includes(q) ||
+                    ord.productName.toLowerCase().includes(q) ||
+                    ord.email.toLowerCase().includes(q) ||
+                    ord.buyerUsername.toLowerCase().includes(q) ||
+                    (ord.buyerProfileName && ord.buyerProfileName.toLowerCase().includes(q)) ||
+                    ord.slotName.toLowerCase().includes(q)
+                  );
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12 space-y-3">
+                      <div className="w-14 h-14 mx-auto rounded-3xl bg-[#FFF8F3] border border-[#FFD9CE] flex items-center justify-center text-[#E5989B]">
+                        <ShoppingBag className="w-7 h-7" />
+                      </div>
+                      <p className="font-bold text-sm text-[#5D4037]">
+                        {q ? `ไม่พบรายการที่ตรงกับ "${dashboardModalSearch}"` : 'ไม่พบบัญชีในหมวดหมู่นี้'}
+                      </p>
+                      <p className="text-xs text-[#8D6E63]">
+                        {dashboardModalType === 'EXPIRING_SOON'
+                          ? 'ไม่มีบัญชีที่กำลังจะหมดอายุในอีก 24 ชั่วโมงข้างหน้า'
+                          : 'ยังไม่มีคำสั่งซื้อที่อยู่ในสถานะใช้งาน'}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return filtered.map((ord: any) => {
+                  const rem = formatRemainingTime(ord.expiresAt);
+
+                  return (
+                    <div
+                      key={ord.id}
+                      className="p-4 rounded-2xl bg-white border border-[#E8DCCF] space-y-3 hover:border-[#FFB4A2] transition-colors shadow-2xs"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E8DCCF]/60 pb-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-[#8D6E63]">#{ord.orderNumber}</span>
+                          <span className="font-extrabold text-sm text-[#5D4037]">{ord.productName}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FFE8D6] text-[#6D4C41] border border-[#FFCDB2]">
+                            {ord.slotName}
+                          </span>
+                          {ord.slotPin && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]">
+                              PIN: {ord.slotPin}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1 ${
+                              rem.isUrgent
+                                ? 'bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]'
+                                : 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
+                            }`}
+                          >
+                            <Clock className="w-3 h-3" />
+                            <span>{rem.text}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-[#FFFDF7] border border-[#E8DCCF] flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-[#8D6E63] block">อีเมล / บัญชี:</span>
+                            <span className="font-mono font-bold text-[#5D4037] select-all">{ord.email}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(ord.email, `ord-email-${ord.id}`)}
+                            className="p-1 rounded-lg hover:bg-[#FFF0EB] text-[#8D6E63]"
+                            title="คัดลอกอีเมล"
+                          >
+                            {copiedId === `ord-email-${ord.id}` ? <Check className="w-3.5 h-3.5 text-[#059669]" /> : <Copy className="w-3.5 h-3.5 text-[#8D6E63]" />}
+                          </button>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-[#FFFDF7] border border-[#E8DCCF] flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-[#8D6E63] block">รหัสผ่าน:</span>
+                            <span className="font-mono font-bold text-[#E5989B] select-all">{ord.password}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(ord.password, `ord-pwd-${ord.id}`)}
+                            className="p-1 rounded-lg hover:bg-[#FFF0EB] text-[#8D6E63]"
+                            title="คัดลอกรหัสผ่าน"
+                          >
+                            {copiedId === `ord-pwd-${ord.id}` ? <Check className="w-3.5 h-3.5 text-[#059669]" /> : <Copy className="w-3.5 h-3.5 text-[#8D6E63]" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#8D6E63] pt-1">
+                        <div>
+                          ผู้ซื้อ: <span className="font-bold text-[#5D4037]">@{ord.buyerUsername}</span>
+                          {ord.buyerProfileName && ` (${ord.buyerProfileName})`}
+                          {' • '}
+                          ยอดเงิน: <span className="font-bold text-[#E5989B]">{ord.amountPaid} ฿</span>
+                        </div>
+                        <div>
+                          หมดอายุ:{' '}
+                          <span className="font-bold text-[#5D4037]">
+                            {new Date(ord.expiresAt).toLocaleString('th-TH', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Sticky Footer */}
+            <div className="px-6 py-3.5 bg-[#FAF7F2] border-t border-[#F5EBE1] flex flex-col sm:flex-row items-center justify-between gap-3 flex-shrink-0 sticky bottom-0 z-10">
+              <span className="text-xs text-[#8D6E63] font-medium">
+                {dashboardModalType === 'SERVICING'
+                  ? `แสดงบัญชีรอเปลี่ยนรหัสทั้งหมด ${stocks.filter((s) => s.status === 'SERVICING').length} รายการ`
+                  : dashboardModalType === 'EXPIRING_SOON'
+                  ? `แสดงบัญชีใกล้หมดอายุ ${stats.subscriptions.expiringSoon} รายการ`
+                  : `แสดงบัญชีกำลังใช้งาน ${stats.subscriptions.active} รายการ`}
+              </span>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                {dashboardModalType === 'SERVICING' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardModalType(null);
+                      handleTabClick('STOCKS');
+                      setStockStatusFilter('SERVICING');
+                    }}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                  >
+                    <span>ไปที่หน้าสต็อกทั้งหมด</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardModalType(null);
+                      handleTabClick('ORDERS');
+                      setOrderStatusFilter(dashboardModalType === 'EXPIRING_SOON' ? 'EXPIRING_SOON' : 'ACTIVE');
+                    }}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                  >
+                    <span>ไปที่หน้าคำสั่งซื้อทั้งหมด</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setDashboardModalType(null)}
+                  className="px-5 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-2xs"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
