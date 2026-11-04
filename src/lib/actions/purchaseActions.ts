@@ -171,8 +171,13 @@ export async function purchaseProductAction(
       const purchasedAt = new Date();
       const expiresAt = calculateSlotExpiry(purchasedAt, product.durationDays, product.cutoffType || 'ROUND_UP_HOUR');
 
-      // Generate human-friendly unique order number: ORD-YYYYMMDD-XXXX
-      const datePart = purchasedAt.toISOString().slice(0, 10).replace(/-/g, '');
+      // Generate human-friendly unique order number: ORD-YYYYMMDD-XXXX (using Thailand timezone)
+      const datePart = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(purchasedAt).replace(/-/g, '');
       const randPart = Math.floor(1000 + Math.random() * 9000);
       const orderNumber = `ORD-${datePart}-${randPart}`;
 
@@ -628,7 +633,12 @@ export async function guestPurchaseWithSlipAction(
         product.cutoffType || 'ROUND_UP_HOUR'
       );
 
-      const datePart = purchasedAt.toISOString().slice(0, 10).replace(/-/g, '');
+      const datePart = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(purchasedAt).replace(/-/g, '');
       const randPart = Math.floor(1000 + Math.random() * 9000);
       const orderNumber = `ORD-GUEST-${datePart}-${randPart}`;
 

@@ -122,16 +122,51 @@ export async function syncExpiredOrdersAndStocks() {
   }
 }
 
+/**
+ * Helper to calculate Thailand (Asia/Bangkok, UTC+7) date boundaries
+ */
+export function getThailandDateBoundaries() {
+  const now = new Date();
+
+  // Convert current time to Thailand calendar date
+  const thaiDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const [yearStr, monthStr, dayStr] = thaiDateFormatter.format(now).split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const day = parseInt(dayStr, 10);
+
+  // Thailand start of day (00:00:00.000 in UTC+7 => 17:00:00.000 UTC of previous day)
+  const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0) - 7 * 60 * 60 * 1000);
+
+  // Thailand start of month (Day 1, 00:00:00.000 in UTC+7)
+  const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0) - 7 * 60 * 60 * 1000);
+
+  // Thailand start of year (Jan 1, 00:00:00.000 in UTC+7)
+  const startOfYear = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0) - 7 * 60 * 60 * 1000);
+
+  const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  return {
+    now,
+    startOfDay,
+    startOfMonth,
+    startOfYear,
+    in24Hours,
+  };
+}
+
 // 1. Dashboard Metrics (Daily, Monthly, Yearly Sales & Bestsellers)
 export async function getAdminDashboardStats() {
   await requireAdmin();
   await syncExpiredOrdersAndStocks();
 
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const { now, startOfDay, startOfMonth, startOfYear, in24Hours } = getThailandDateBoundaries();
 
   const [
     dailySales,
