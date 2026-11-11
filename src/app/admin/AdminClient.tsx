@@ -374,6 +374,7 @@ export function AdminClient({
   const [prodAddonName, setProdAddonName] = useState('รับประกันเคลม');
   const [prodAddonPrice, setProdAddonPrice] = useState<number | string>(5);
   const [prodIsBestseller, setProdIsBestseller] = useState(false);
+  const [prodAppGroup, setProdAppGroup] = useState('');
   const [prodLoading, setProdLoading] = useState(false);
 
   // Bank Account Modal
@@ -747,6 +748,10 @@ export function AdminClient({
     e.preventDefault();
     setProdLoading(true);
 
+    const finalRules = prodAppGroup.trim()
+      ? `<!--group:${prodAppGroup.trim()}-->\n${prodRules}`
+      : prodRules;
+
     const res = await saveProductAction({
       id: editProductModal?.id,
       name: prodName,
@@ -755,7 +760,7 @@ export function AdminClient({
       durationDays: Number(prodDuration) || 30,
       categoryId: prodCategory,
       imageUrl: prodImage,
-      rules: prodRules,
+      rules: finalRules,
       usageGuide: prodGuide,
       otpEnabled: prodOtp,
       lineOaUrl: prodLineOa || undefined,
@@ -1985,6 +1990,7 @@ export function AdminClient({
                 setProdAddonName('รับประกันเคลม');
                 setProdAddonPrice(5);
                 setProdIsBestseller(false);
+                setProdAppGroup('');
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-xs"
             >
@@ -2085,7 +2091,10 @@ export function AdminClient({
                         setProdDuration(p.durationDays);
                         setProdCategory(p.categoryId);
                         setProdImage(p.imageUrl);
-                        setProdRules(p.rules);
+                        const rawRules = p.rules || '';
+                        const groupMatch = rawRules.match(/<!--group:(.*?)-->/);
+                        setProdAppGroup(groupMatch ? groupMatch[1].trim() : (p.appGroup || ''));
+                        setProdRules(rawRules.replace(/<!--group:.*?-->\r?\n?/, '').trim());
                         setProdGuide(p.usageGuide);
                         setProdOtp(p.otpEnabled);
                         setProdLineOa(p.lineOaUrl || '');
@@ -3499,6 +3508,20 @@ export function AdminClient({
                     value={prodName}
                     onChange={(e) => setProdName(e.target.value)}
                     className="w-full miki-input text-xs font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#5D4037]">กลุ่มแพ็กเกจ / ชื่อแอปหลัก (เช่น Netflix, YouTube)</label>
+                    <span className="text-[10px] text-[#8D6E63]">ใส่ชื่อกลุ่มเดียวกันเพื่อรวมแพ็กเกจที่หน้าร้าน (ปล่อยว่างถ้าเป็นสินค้าเดี่ยว)</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="เช่น Netflix (สินค้าที่ใส่ชื่อกลุ่มเดียวกันจะรวมเป็นการ์ดเดียวกันอัตโนมัติ)"
+                    value={prodAppGroup}
+                    onChange={(e) => setProdAppGroup(e.target.value)}
+                    className="w-full miki-input text-xs font-medium"
                   />
                 </div>
 

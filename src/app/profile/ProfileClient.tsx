@@ -79,140 +79,85 @@ export function ProfileClient({ user, agentStats }: ProfileClientProps) {
         </p>
       </div>
 
-      {/* Unified Profile & Achievements Card */}
-      <div className="miki-card p-6 sm:p-7 bg-white border border-[#E8DCCF] rounded-[2rem] shadow-xs space-y-6">
-        {/* Profile Details (Top) */}
-        <div className="flex flex-col items-center text-center space-y-2.5">
-          {/* Avatar */}
-          <div className="py-1">
+      {/* Unified Profile & Achievements Card (Avatar on Left, Speech Bubble on Right) */}
+      <div className="miki-card p-6 sm:p-7 bg-white border border-[#E8DCCF] rounded-[2rem] shadow-xs">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6">
+          {/* Avatar & Profile Info (Left) */}
+          <div className="flex flex-col items-center text-center flex-shrink-0 sm:w-44">
             <AvatarWithFrame
               src={avatarUrl || null}
               alt={profileName || user.username}
               size="xl"
             />
-          </div>
-
-          {/* User Details */}
-          <div>
-            <h2 className="text-xl font-black text-[#5D4037]">
+            <h2 className="text-base sm:text-lg font-black text-[#5D4037] mt-2">
               {profileName || 'ชื่อตัวแทนของคุณ'}
             </h2>
             <p className="text-xs font-bold text-[#8D6E63] font-mono mt-0.5">
               @{user.username} • {user.role === 'ADMIN' ? 'ผู้ดูแลระบบ' : 'ตัวแทนจำหน่าย'}
             </p>
             {salesChannel && (
-              <p className="text-xs text-[#8D6E63] font-medium mt-1">
-                ช่องทางขาย: {salesChannel}
+              <p className="text-[11px] text-[#8D6E63] font-medium mt-1">
+                ช่องทาง: {salesChannel}
               </p>
             )}
           </div>
-        </div>
 
-        {/* Divider */}
-        <div className="border-t border-[#F5EBE1]" />
+          {/* Animated Speech Bubble (Right) - Exactly like StoreHero & Picture */}
+          <div className="flex-1 w-full">
+            <div className="relative p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-white border border-[#FFD9CE] shadow-[0_4px_20px_rgba(255,180,162,0.12)]">
+              {/* Speech bubble tail pointer pointing to avatar on left */}
+              <div className="hidden sm:block absolute -left-2.5 top-8 w-3 h-3 bg-white border-l border-b border-[#FFD9CE] rotate-45 transform" />
+              {/* Mobile tail pointing up to avatar */}
+              <div className="sm:hidden absolute -top-1.5 left-8 w-3 h-3 bg-white border-l border-t border-[#FFD9CE] rotate-45 transform" />
 
-        {/* Achievements Section (Bottom) */}
-        {agentStats && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-black text-[#5D4037]">
-                  Achievements
-                </h3>
-                <p className="text-xs text-[#8D6E63] font-medium">
-                  {agentStats.monthName}
-                </p>
+              {/* Speech Bubble Header */}
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#F5EBE1]">
+                <span className="text-[11px] font-bold text-[#E5989B] tracking-wide">
+                  Achievements ({agentStats?.monthName || 'ประจำเดือน'})
+                </span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#E5989B]" />
               </div>
 
-              {agentStats.monthlyRank ? (
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#5D4037] border border-[#FFD9CE]">
-                  อันดับที่ {agentStats.monthlyRank} / {agentStats.totalActiveAgents} คน
-                </span>
-              ) : (
-                <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#FFF8F3] text-[#8D6E63] border border-[#E8DCCF]">
-                  ยังไม่มีอันดับ
-                </span>
-              )}
-            </div>
-
-            {/* 3 Stats Grid (Themed Bakery Colors: #5D4037, #8D6E63, #E5989B) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* เครดิตปัจจุบัน */}
-              <div className="p-4 rounded-2xl bg-[#FFFDF8] border border-[#FFD9CE] space-y-2">
-                <span className="text-xs font-bold text-[#8D6E63] block">
-                  เครดิตปัจจุบัน
-                </span>
-                <span className="text-2xl font-black text-[#5D4037] tracking-tight block">
-                  ฿{agentStats.creditBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                <Link
-                  href="/"
-                  className="text-[11px] font-bold text-[#E5989B] hover:text-[#D67D81] flex items-center gap-1 pt-1 border-t border-[#F5EBE1]"
-                >
-                  <span>ไปหน้าหลัก / เติมเงิน</span>
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
-              </div>
-
-              {/* ยอดขายเดือนนี้ */}
-              <div className="p-4 rounded-2xl bg-[#FFFDF8] border border-[#FFD9CE] space-y-2">
-                <span className="text-xs font-bold text-[#8D6E63] block">
-                  ขายได้ในเดือนนี้
-                </span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-black text-[#5D4037]">
-                    {agentStats.monthlyOrdersCount}
+              {/* 3 Items: 1. อันดับ 2. ออเดอร์ 3. เครดิต */}
+              <div className="space-y-2.5 text-xs sm:text-sm font-medium text-[#6D4C41]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-[#5D4037]">1. อันดับ:</span>
+                  <span className="font-bold text-[#5D4037]">
+                    {agentStats?.monthlyRank
+                      ? `อันดับที่ ${agentStats.monthlyRank} (จาก ${agentStats.totalActiveAgents} คน)`
+                      : 'ยังไม่มีอันดับในเดือนนี้'}
                   </span>
-                  <span className="text-xs font-bold text-[#8D6E63]">ออเดอร์</span>
                 </div>
-                <span className="text-[11px] text-[#8D6E63] block pt-1 border-t border-[#F5EBE1]">
-                  ยอดซื้อรวม ฿{agentStats.monthlySalesAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
 
-              {/* อันดับในตัวแทน */}
-              <div className="p-4 rounded-2xl bg-[#FFFDF8] border border-[#FFD9CE] space-y-2">
-                <span className="text-xs font-bold text-[#8D6E63] block">
-                  อันดับในตัวแทน
-                </span>
-                {agentStats.monthlyRank ? (
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-black text-[#5D4037]">
-                      #{agentStats.monthlyRank}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-[#5D4037]">2. ออเดอร์:</span>
+                  <span className="font-bold text-[#5D4037]">
+                    ขายได้ {agentStats?.monthlyOrdersCount || 0} ออเดอร์
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#F5EBE1]">
+                  <span className="font-bold text-[#5D4037]">3. เครดิต:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-[#5D4037]">
+                      ฿{(agentStats?.creditBalance || 0).toLocaleString('th-TH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </span>
-                    <span className="text-xs font-bold text-[#8D6E63]">
-                      จาก {agentStats.totalActiveAgents} คน
-                    </span>
+                    <Link
+                      href="/"
+                      className="text-[11px] font-bold text-[#E5989B] hover:text-[#D67D81] underline flex items-center gap-0.5"
+                    >
+                      <span>ไปหน้าเติมเงิน</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </Link>
                   </div>
-                ) : (
-                  <span className="text-sm font-bold text-[#8D6E63] block">
-                    ยังไม่มีอันดับ
-                  </span>
-                )}
-                <span className="text-[11px] text-[#8D6E63] block pt-1 border-t border-[#F5EBE1]">
-                  {agentStats.monthlyRank ? 'อันดับประจำเดือนนี้' : 'เปิดออเดอร์แรกเพื่อจัดอันดับ'}
-                </span>
-              </div>
-            </div>
-
-            {/* Speech Bubble like Storefront (ใต้ 3 กรอบ) */}
-            <div className="relative mt-3 p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#FFFDF8] border border-[#FFD9CE] shadow-[0_4px_20px_rgba(255,180,162,0.08)]">
-              {/* Speech bubble tail pointer pointing to stats above */}
-              <div className="absolute -top-1.5 left-8 w-3 h-3 bg-[#FFFDF8] border-l border-t border-[#FFD9CE] rotate-45 transform" />
-
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[#E5989B]">
-                  <span className="text-xs font-bold font-mono tracking-widest">...</span>
                 </div>
-                <p className="text-xs sm:text-sm font-medium text-[#6D4C41] leading-relaxed">
-                  {agentStats.monthlyOrdersCount > 0
-                    ? `เดือนนี้คุณ ${profileName || user.username} ทำยอดขายไปแล้ว ${agentStats.monthlyOrdersCount} ออเดอร์ เก่งมากๆ เลยค่ะ ขอให้ยอดปังๆ ตลอดเดือนนะคะ`
-                    : `สวัสดีค่ะคุณ ${profileName || user.username} เริ่มต้นเดือนใหม่ด้วยการหาลูกค้าและสะสมยอดขายกันเถอะ สู้ๆ นะคะ`}
-                </p>
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Settings Form */}

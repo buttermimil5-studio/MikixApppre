@@ -78,6 +78,11 @@ export default async function HomePage() {
     const directAssignedSlotsCount = p.assignedSlots?.length || 0;
     const availableSlotsCount = stockSlotsCount + directAssignedSlotsCount;
 
+    const rawRules = p.rules || '';
+    const groupMatch = rawRules.match(/<!--group:(.*?)-->/);
+    const appGroup = groupMatch && groupMatch[1]?.trim() ? groupMatch[1].trim() : null;
+    const cleanRules = rawRules.replace(/<!--group:.*?-->\r?\n?/, '').trim();
+
     return {
       id: p.id,
       name: p.name,
@@ -85,7 +90,8 @@ export default async function HomePage() {
       price: p.price,
       retailPrice: p.retailPrice,
       durationDays: p.durationDays,
-      rules: p.rules,
+      rules: cleanRules,
+      appGroup,
       usageGuide: p.usageGuide,
       otpEnabled: p.otpEnabled,
       lineOaUrl: p.lineOaUrl,
