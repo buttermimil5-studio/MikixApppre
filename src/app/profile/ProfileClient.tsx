@@ -82,19 +82,7 @@ export function ProfileClient({ user, agentStats }: ProfileClientProps) {
       {/* Unified Profile & Achievements Card */}
       <div className="miki-card p-6 sm:p-7 bg-white border border-[#E8DCCF] rounded-[2rem] shadow-xs space-y-6">
         {/* Profile Details (Top) */}
-        <div className="flex flex-col items-center text-center space-y-3">
-          {/* Speech Bubble above avatar */}
-          <div className="relative inline-flex items-center gap-1.5 bg-[#FFF8F3] px-4 py-1.5 rounded-full border border-[#FFD9CE] text-xs text-[#8D6E63] font-medium shadow-2xs mb-1">
-            <span className="font-bold text-[#E5989B]">...</span>
-            <span>
-              {agentStats?.monthlyOrdersCount
-                ? `เดือนนี้สร้างยอดขายไปแล้ว ${agentStats.monthlyOrdersCount} ออเดอร์`
-                : 'พร้อมรับออเดอร์และสร้างยอดขายแล้วค่ะ'}
-            </span>
-            {/* Bubble Tail pointing down towards avatar */}
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#FFF8F3] border-r border-b border-[#FFD9CE] rotate-45" />
-          </div>
-
+        <div className="flex flex-col items-center text-center space-y-2.5">
           {/* Avatar */}
           <div className="py-1">
             <AvatarWithFrame
@@ -204,6 +192,23 @@ export function ProfileClient({ user, agentStats }: ProfileClientProps) {
                 <span className="text-[11px] text-[#8D6E63] block pt-1 border-t border-[#F5EBE1]">
                   {agentStats.monthlyRank ? 'อันดับประจำเดือนนี้' : 'เปิดออเดอร์แรกเพื่อจัดอันดับ'}
                 </span>
+              </div>
+            </div>
+
+            {/* Speech Bubble like Storefront (ใต้ 3 กรอบ) */}
+            <div className="relative mt-3 p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-[#FFFDF8] border border-[#FFD9CE] shadow-[0_4px_20px_rgba(255,180,162,0.08)]">
+              {/* Speech bubble tail pointer pointing to stats above */}
+              <div className="absolute -top-1.5 left-8 w-3 h-3 bg-[#FFFDF8] border-l border-t border-[#FFD9CE] rotate-45 transform" />
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5 text-[#E5989B]">
+                  <span className="text-xs font-bold font-mono tracking-widest">...</span>
+                </div>
+                <p className="text-xs sm:text-sm font-medium text-[#6D4C41] leading-relaxed">
+                  {agentStats.monthlyOrdersCount > 0
+                    ? `เดือนนี้คุณ ${profileName || user.username} ทำยอดขายไปแล้ว ${agentStats.monthlyOrdersCount} ออเดอร์ เก่งมากๆ เลยค่ะ ขอให้ยอดปังๆ ตลอดเดือนนะคะ`
+                    : `สวัสดีค่ะคุณ ${profileName || user.username} เริ่มต้นเดือนใหม่ด้วยการหาลูกค้าและสะสมยอดขายกันเถอะ สู้ๆ นะคะ`}
+                </p>
               </div>
             </div>
           </div>
