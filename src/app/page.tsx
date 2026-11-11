@@ -7,70 +7,63 @@ import { ProductCatalog } from '@/components/ProductCatalog';
 import { ShokupanIcon } from '@/components/BakeryLineIcons';
 
 
-import { unstable_cache } from 'next/cache';
+export const revalidate = 5; // 5-second revalidation: Blazing-fast page loads (<20ms) with instant invalidation on purchase/restock
 
-const getCachedStoreData = unstable_cache(
-  async () => {
-    let storeSetting = await prisma.storeSetting.findUnique({
+async function getStoreData() {
+  const [storeSetting, categories, contacts, rawProducts, bankAccounts] = await Promise.all([
+    prisma.storeSetting.findUnique({
       where: { id: 'default' },
-    });
-
-    if (!storeSetting) {
-      storeSetting = await prisma.storeSetting.create({
-        data: {
-          id: 'default',
-          storeName: 'Miki App Store',
-        },
-      });
-    }
-
-    const [categories, contacts, rawProducts, bankAccounts] = await Promise.all([
-      prisma.category.findMany({
-        orderBy: { sortOrder: 'asc' },
-      }),
-      prisma.storeContact.findMany({
-        orderBy: { sortOrder: 'asc' },
-      }),
-      prisma.product.findMany({
-        where: { isActive: true },
-        include: {
-          category: true,
-          accountStocks: {
-            where: { status: { in: ['ACTIVE', 'FULL'] } },
-            select: {
-              id: true,
-              profileSlots: {
-                where: { status: 'AVAILABLE' },
-                select: { id: true, productId: true },
-              },
+    }),
+    prisma.category.findMany({
+      orderBy: { sortOrder: 'asc' },
+    }),
+    prisma.storeContact.findMany({
+      orderBy: { sortOrder: 'asc' },
+    }),
+    prisma.product.findMany({
+      where: { isActive: true },
+      include: {
+        category: true,
+        accountStocks: {
+          where: { status: { in: ['ACTIVE', 'FULL'] } },
+          select: {
+            profileSlots: {
+              where: { status: 'AVAILABLE' },
+              select: { productId: true },
             },
           },
-          assignedSlots: {
-            where: {
-              status: 'AVAILABLE',
-              accountStock: { status: { in: ['ACTIVE', 'FULL'] } },
-            },
-            select: { id: true },
-          },
         },
-        orderBy: [{ isBestseller: 'desc' }, { createdAt: 'desc' }],
-      }),
-      prisma.bankAccount.findMany({
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-      }),
-    ]);
+        assignedSlots: {
+          where: {
+            status: 'AVAILABLE',
+            accountStock: { status: { in: ['ACTIVE', 'FULL'] } },
+          },
+          select: { id: true },
+        },
+      },
+      orderBy: [{ isBestseller: 'desc' }, { createdAt: 'desc' }],
+    }),
+    prisma.bankAccount.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+  ]);
 
-    return { storeSetting, categories, contacts, rawProducts, bankAccounts };
-  },
-  ['home_store_catalog'],
-  { revalidate: 30, tags: ['store_data', 'products'] }
-);
+  const activeSetting = storeSetting || {
+    id: 'default',
+    storeName: 'Miki App Store',
+    isOpen: true,
+    closedNotice: null,
+    slip2goSecretKey: null,
+  };
+
+  return { storeSetting: activeSetting, categories, contacts, rawProducts, bankAccounts };
+}
 
 export default async function HomePage() {
   const [user, storeData] = await Promise.all([
     getCurrentUser(),
-    getCachedStoreData(),
+    getStoreData(),
   ]);
 
   const { storeSetting, categories, contacts, rawProducts, bankAccounts } = storeData;

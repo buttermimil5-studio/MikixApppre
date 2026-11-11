@@ -214,6 +214,7 @@ export async function purchaseProductAction(
 
     revalidatePath('/');
 
+
     return {
       success: true,
       remainingBalance: transactionResult.remainingBalance,
@@ -315,15 +316,27 @@ export async function getUserOrdersAction() {
       orderBy: { purchasedAt: 'desc' },
     });
 
+    const now = new Date();
     const formatted = orders.map((o) => {
-      let email = '[รหัสหมดอายุ]';
-      let password = '[รหัสหมดอายุ]';
+      let email = '[ข้อมูลถูกลบหรือหมดอายุ]';
+      let password = '•••••••• (หมดอายุการใช้งานแล้ว)';
+      const isOrderExpired = o.status === 'EXPIRED' || new Date(o.expiresAt).getTime() <= now.getTime();
 
-      // Only decrypt if ACTIVE or for viewing history
+      // Only decrypt if ACTIVE; if EXPIRED, NEVER expose the newly recycled password!
       try {
         const creds = decryptStockCredentials(o.profileSlot.accountStock);
         email = creds.email;
-        password = creds.password;
+
+        // If expired or if the stock was updated/recycled after order expiry, protect credentials
+        const stockUpdatedAt = new Date(o.profileSlot.accountStock.updatedAt).getTime();
+        const orderExpiryTime = new Date(o.expiresAt).getTime();
+        const wasRecycledAfterOrder = stockUpdatedAt > orderExpiryTime;
+
+        if (isOrderExpired || wasRecycledAfterOrder) {
+          password = '•••••••• (หมดอายุการใช้งานแล้ว)';
+        } else {
+          password = creds.password;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -335,13 +348,13 @@ export async function getUserOrdersAction() {
         imageUrl: o.product.imageUrl,
         amountPaid: o.amountPaid,
         slotName: o.profileSlot.slotName,
-        slotPin: o.profileSlot.slotPin,
+        slotPin: isOrderExpired ? '••••' : o.profileSlot.slotPin,
         deviceType: o.profileSlot.deviceType || 'MOBILE',
         email,
         password,
         purchasedAt: o.purchasedAt.toISOString(),
         expiresAt: o.expiresAt.toISOString(),
-        status: o.status,
+        status: isOrderExpired ? 'EXPIRED' : o.status,
         otpEnabled: o.product.otpEnabled,
         lineOaUrl: o.product.lineOaUrl,
         rules: o.product.rules,
@@ -673,6 +686,7 @@ export async function guestPurchaseWithSlipAction(
     });
 
     revalidatePath('/');
+
 
     return {
       success: true,

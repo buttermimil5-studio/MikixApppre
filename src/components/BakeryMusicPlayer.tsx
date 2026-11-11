@@ -68,9 +68,9 @@ export function BakeryMusicPlayer() {
   const isCurrentYT = isYouTubeUrl(currentTrack?.url);
   const currentYtId = extractYouTubeVideoId(currentTrack?.url);
 
-  // Initialize YouTube Iframe API
+  // Initialize YouTube Iframe API (Only when current track is a YouTube URL)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !isCurrentYT) return;
 
     let pollInterval: any;
 

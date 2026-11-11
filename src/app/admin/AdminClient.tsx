@@ -71,6 +71,8 @@ import {
   Search,
   Flame,
   Copy,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { BakeryLoadingModal } from '@/components/BakeryLoadingModal';
 import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
@@ -154,6 +156,11 @@ export function AdminClient({
   const [dashboardModalType, setDashboardModalType] = useState<'ACTIVE' | 'EXPIRING_SOON' | 'SERVICING' | null>(null);
   const [dashboardModalSearch, setDashboardModalSearch] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [visiblePasswords, setVisiblePasswords] = useState<{ [stockId: string]: boolean }>({});
+
+  const togglePasswordVisibility = (stockId: string) => {
+    setVisiblePasswords((prev) => ({ ...prev, [stockId]: !prev[stockId] }));
+  };
 
   const handleCopyText = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -1682,11 +1689,51 @@ export function AdminClient({
                           </span>
                         )}
                       </div>
-                      <p className="text-xs font-mono text-[#8D6E63] mt-0.5">
-                        {stock.email && !stock.email.includes('@') && /^[0-9+\s-]+$/.test(stock.email) ? 'เบอร์โทร:' : 'บัญชี / อีเมล:'}{' '}
-                        <span className="font-bold text-[#5D4037]">{stock.email}</span>
-                        {stock.notes && ` • หมายเหตุ: ${stock.notes}`}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-[#8D6E63] mt-1">
+                        <span>
+                          {stock.email && !stock.email.includes('@') && /^[0-9+\s-]+$/.test(stock.email) ? 'เบอร์โทร:' : 'บัญชี / อีเมล:'}{' '}
+                          <span className="font-bold text-[#5D4037]">{stock.email}</span>
+                        </span>
+
+                        <span className="text-[#E8DCCF] hidden sm:inline">•</span>
+
+                        <span className="inline-flex items-center gap-1.5 bg-[#FFF8F3] px-2 py-0.5 rounded-lg border border-[#FFD9CE]">
+                          <span className="font-sans text-[11px] font-bold text-[#8D6E63]">รหัสผ่าน:</span>
+                          <span className="font-bold text-[#E5989B] font-mono select-all">
+                            {visiblePasswords[stock.id] ? stock.password : '••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordVisibility(stock.id)}
+                            className="p-1 rounded-md hover:bg-[#FFEFE8] text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+                            title={visiblePasswords[stock.id] ? 'ซ่อนรหัสผ่าน' : 'กดดูรหัสผ่าน'}
+                          >
+                            {visiblePasswords[stock.id] ? (
+                              <EyeOff className="w-3.5 h-3.5" />
+                            ) : (
+                              <Eye className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(stock.password, `stock-pwd-${stock.id}`)}
+                            className="p-1 rounded-md hover:bg-[#FFEFE8] text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+                            title="คัดลอกรหัสผ่าน"
+                          >
+                            {copiedId === `stock-pwd-${stock.id}` ? (
+                              <Check className="w-3.5 h-3.5 text-[#059669]" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </span>
+
+                        {stock.notes && (
+                          <span className="text-[#8D6E63]">
+                            • หมายเหตุ: <span className="text-[#5D4037]">{stock.notes}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">

@@ -49,39 +49,48 @@ export default function InteractiveMascot() {
     }
   }, []);
 
-  // Mouse tracking logic (Look at cursor)
+  // Mouse tracking logic (Look at cursor) - Throttled with requestAnimationFrame for smooth 60fps
   useEffect(() => {
+    let rafId: number | null = null;
+
     const handleMouseMove = (e: MouseEvent) => {
       lastMouseMoveRef.current = Date.now();
       if (isSpinning || isMinimized) return;
 
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const mascotCenterX = rect.left + rect.width / 2;
-      const mascotCenterY = rect.top + rect.height / 2;
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const mascotCenterX = rect.left + rect.width / 2;
+        const mascotCenterY = rect.top + rect.height / 2;
 
-      const dx = e.clientX - mascotCenterX;
-      const dy = e.clientY - mascotCenterY;
+        const dx = e.clientX - mascotCenterX;
+        const dy = e.clientY - mascotCenterY;
 
-      // Map dx, dy into col (0..4) and row (0..4)
-      let targetCol = 2;
-      if (dx < -220) targetCol = 0;
-      else if (dx < -70) targetCol = 1;
-      else if (dx > 220) targetCol = 4;
-      else if (dx > 70) targetCol = 3;
+        // Map dx, dy into col (0..4) and row (0..4)
+        let targetCol = 2;
+        if (dx < -220) targetCol = 0;
+        else if (dx < -70) targetCol = 1;
+        else if (dx > 220) targetCol = 4;
+        else if (dx > 70) targetCol = 3;
 
-      let targetRow = 2;
-      if (dy < -220) targetRow = 0;
-      else if (dy < -70) targetRow = 1;
-      else if (dy > 220) targetRow = 4;
-      else if (dy > 70) targetRow = 3;
+        let targetRow = 2;
+        if (dy < -220) targetRow = 0;
+        else if (dy < -70) targetRow = 1;
+        else if (dy > 220) targetRow = 4;
+        else if (dy > 70) targetRow = 3;
 
-      setCol(targetCol);
-      setRow(targetRow);
+        setCol((prev) => (prev !== targetCol ? targetCol : prev));
+        setRow((prev) => (prev !== targetRow ? targetRow : prev));
+      });
     };
 
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, [isSpinning, isMinimized]);
 
   // Idle animation loop (wiggling / glancing around when idle)

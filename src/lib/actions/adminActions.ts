@@ -42,44 +42,46 @@ export async function syncExpiredOrdersAndStocks() {
       },
     });
 
-    if (expiredOrders.length > 0) {
-      const affectedStockIds = new Set<string>();
+    if (expiredOrders.length === 0) {
+      return;
+    }
 
-      for (const exp of expiredOrders) {
-        await prisma.$transaction(async (tx) => {
-          await tx.order.update({
-            where: { id: exp.id },
+    const affectedStockIds = new Set<string>();
+
+    for (const exp of expiredOrders) {
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: exp.id },
+          data: { status: 'EXPIRED' },
+        });
+
+        if (exp.profileSlotId) {
+          await tx.accountProfileSlot.update({
+            where: { id: exp.profileSlotId },
             data: { status: 'EXPIRED' },
           });
-
-          if (exp.profileSlotId) {
-            await tx.accountProfileSlot.update({
-              where: { id: exp.profileSlotId },
-              data: { status: 'EXPIRED' },
-            });
-          }
-        });
-
-        if (exp.profileSlot?.accountStockId) {
-          affectedStockIds.add(exp.profileSlot.accountStockId);
         }
+      });
+
+      if (exp.profileSlot?.accountStockId) {
+        affectedStockIds.add(exp.profileSlot.accountStockId);
       }
+    }
 
-      // Check each affected stock: if no active orders remain, move to SERVICING
-      for (const stockId of affectedStockIds) {
-        const remainingActive = await prisma.order.count({
-          where: {
-            profileSlot: { accountStockId: stockId },
-            status: 'ACTIVE',
-          },
+    // Check each affected stock: if no active orders remain, move to SERVICING
+    for (const stockId of affectedStockIds) {
+      const remainingActive = await prisma.order.count({
+        where: {
+          profileSlot: { accountStockId: stockId },
+          status: 'ACTIVE',
+        },
+      });
+
+      if (remainingActive === 0) {
+        await prisma.accountStock.update({
+          where: { id: stockId },
+          data: { status: 'SERVICING' },
         });
-
-        if (remainingActive === 0) {
-          await prisma.accountStock.update({
-            where: { id: stockId },
-            data: { status: 'SERVICING' },
-          });
-        }
       }
     }
 
@@ -125,7 +127,7 @@ export async function syncExpiredOrdersAndStocks() {
 /**
  * Helper to calculate Thailand (Asia/Bangkok, UTC+7) date boundaries
  */
-export function getThailandDateBoundaries() {
+export async function getThailandDateBoundaries() {
   const now = new Date();
 
   // Convert current time to Thailand calendar date
@@ -166,7 +168,7 @@ export async function getAdminDashboardStats() {
   await requireAdmin();
   await syncExpiredOrdersAndStocks();
 
-  const { now, startOfDay, startOfMonth, startOfYear, in24Hours } = getThailandDateBoundaries();
+  const { now, startOfDay, startOfMonth, startOfYear, in24Hours } = await getThailandDateBoundaries();
 
   const [
     dailySales,
@@ -450,6 +452,7 @@ export async function addStockAccountAction(data: {
     revalidatePath('/');
     revalidatePath('/admin');
 
+
     return { success: true, stockId: stock.id };
   } catch (err: any) {
     console.error('addStockAccountAction error:', err);
@@ -548,6 +551,7 @@ export async function updateStockSlotsAction(
   revalidatePath('/');
   revalidatePath('/admin');
 
+
   return { success: true };
 }
 
@@ -595,6 +599,7 @@ export async function recycleStockAccountAction(stockId: string, newPassword: st
   revalidatePath('/');
   revalidatePath('/admin');
 
+
   return { success: true };
 }
 
@@ -638,6 +643,7 @@ export async function deleteStockAccountAction(stockId: string): Promise<{ succe
 
     revalidatePath('/admin');
     revalidatePath('/');
+
     return { success: true };
   } catch (err: any) {
     console.error('deleteStockAccountAction error:', err);
@@ -751,6 +757,7 @@ export async function saveProductAction(data: {
     });
     revalidatePath('/admin');
     revalidatePath('/');
+
     return { success: true, product: updated };
   } else {
     const created = await prisma.product.create({
@@ -758,6 +765,7 @@ export async function saveProductAction(data: {
     });
     revalidatePath('/admin');
     revalidatePath('/');
+
     return { success: true, product: created };
   }
 }
@@ -832,6 +840,7 @@ export async function deleteProductAction(productId: string): Promise<{ success:
 
     revalidatePath('/admin');
     revalidatePath('/');
+
     return { success: true };
   } catch (err: any) {
     console.error('deleteProductAction error:', err);
@@ -1071,6 +1080,7 @@ export async function approveManualTopupAction(txId: string, approved: boolean, 
 
   revalidatePath('/');
   revalidatePath('/admin');
+
 
   return { success: true };
 }

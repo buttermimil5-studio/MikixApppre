@@ -222,9 +222,15 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       <Key className="w-4 h-4 text-[#E5989B]" />
                       ข้อมูลบัญชีที่ได้รับ
                     </span>
-                    <span className="text-[11px] font-bold text-[#2E7D32] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full border border-[#C8E6C9]">
-                      พร้อมใช้งาน
-                    </span>
+                    {isActive ? (
+                      <span className="text-[11px] font-bold text-[#2E7D32] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full border border-[#C8E6C9]">
+                        พร้อมใช้งาน
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-[#DC2626] bg-[#FEF2F2] px-2.5 py-0.5 rounded-full border border-[#FECACA]">
+                        หมดอายุการใช้งานแล้ว
+                      </span>
+                    )}
                   </div>
 
                   {/* Highlighted Screen & PIN Box */}
