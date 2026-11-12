@@ -3,15 +3,14 @@ import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { Navbar } from '@/components/Navbar';
 import { redirect } from 'next/navigation';
+import { getStoreSettingCached } from '@/lib/storeCache';
 import { ProfileClient } from './ProfileClient';
 
 
 export default async function ProfilePage() {
   const [user, storeSetting] = await Promise.all([
     getCurrentUser(),
-    prisma.storeSetting.findUnique({
-      where: { id: 'default' },
-    }),
+    getStoreSettingCached(),
   ]);
 
   if (!user) {

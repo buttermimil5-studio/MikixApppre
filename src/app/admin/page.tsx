@@ -1,13 +1,9 @@
 import React from 'react';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { Navbar } from '@/components/Navbar';
 import { redirect } from 'next/navigation';
-import {
-  getAdminDashboardStats,
-  getStoreSettings,
-  getAdminProducts,
-} from '@/lib/actions/adminActions';
+import { getAdminDashboardStats } from '@/lib/actions/adminActions';
+import { getStoreDataCached } from '@/lib/storeCache';
 import { AdminClient } from './AdminClient';
 
 export default async function AdminPage() {
@@ -16,14 +12,12 @@ export default async function AdminPage() {
     redirect('/login?redirect=/admin');
   }
 
-  // Fast initial load: Dashboard stats, settings, categories, and products list!
-  // Heavy tabs (hundreds of stocks with AES decrypt, orders, users, slips, logs) are loaded on-demand.
-  const [stats, storeSetting, categories, products] = await Promise.all([
+  const [stats, storeData] = await Promise.all([
     getAdminDashboardStats(),
-    getStoreSettings(),
-    prisma.category.findMany({ orderBy: { sortOrder: 'asc' } }),
-    getAdminProducts(),
+    getStoreDataCached(),
   ]);
+
+  const { storeSetting, categories } = storeData;
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col">
@@ -34,7 +28,7 @@ export default async function AdminPage() {
           initialStats={stats}
           initialSettings={storeSetting}
           categories={categories}
-          initialProducts={products}
+          initialProducts={[]}
         />
       </main>
     </div>

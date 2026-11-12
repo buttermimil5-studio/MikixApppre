@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, invalidateUserCache } from '@/lib/auth';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -181,6 +181,8 @@ export async function submitTopupSlipAction(formData: FormData): Promise<TopupRe
 
       return { topup, newBalance: updatedUserBalance };
     });
+
+    invalidateUserCache(user.id);
 
     return {
       success: true,

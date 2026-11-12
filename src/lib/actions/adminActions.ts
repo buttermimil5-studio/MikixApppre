@@ -2,7 +2,7 @@
 
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, invalidateUserCache } from '@/lib/auth';
 import {
   encryptCredentials,
   decryptCredentials,
@@ -10,6 +10,7 @@ import {
   decryptStockCredentials,
 } from '@/lib/crypto';
 import { revalidatePath, revalidateTag } from 'next/cache';
+import { invalidateStoreCache } from '@/lib/storeCache';
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -181,69 +182,58 @@ export async function getThailandDateBoundaries() {
   };
 }
 
-// 1. Dashboard Metrics (Daily, Monthly, Yearly Sales & Bestsellers)
-export async function getAdminDashboardStats() {
-  await requireAdmin();
-  await syncExpiredOrdersAndStocks();
+interface AdminDashboardStatsCache {
+  data: any;
+  timestamp: number;
+}
 
+const globalAdminStatsCache = global as unknown as {
+  __mikiAdminStatsCache?: AdminDashboardStatsCache;
+};
+
+const STATS_CACHE_TTL_MS = 60 * 1000;
+
+export function invalidateAdminStatsCache() {
+  delete globalAdminStatsCache.__mikiAdminStatsCache;
+}
+
+let lastSyncTimestamp = 0;
+const SYNC_THROTTLE_MS = 3 * 60 * 1000; // 3 minutes
+
+export function syncExpiredOrdersAndStocksThrottled() {
+  const now = Date.now();
+  if (now - lastSyncTimestamp < SYNC_THROTTLE_MS) return;
+  lastSyncTimestamp = now;
+  // Run asynchronously in background without blocking callers
+  syncExpiredOrdersAndStocks().catch((err) => console.error('Background sync error:', err));
+}
+
+let isFetchingStats = false;
+
+async function fetchFreshStats(): Promise<any> {
   const { now, startOfDay, startOfMonth, startOfYear, in24Hours } = await getThailandDateBoundaries();
 
-  const [
-    dailySales,
-    monthlySales,
-    yearlySales,
-    totalTopup,
-    activeOrdersCount,
-    expiringSoonCount,
-    expiredCount,
-    servicingStockCount,
-    products,
-  ] = await Promise.all([
-    // Daily sales
-    prisma.order.aggregate({
-      _sum: { amountPaid: true },
-      _count: { id: true },
-      where: { purchasedAt: { gte: startOfDay } },
-    }),
-    // Monthly sales
-    prisma.order.aggregate({
-      _sum: { amountPaid: true },
-      _count: { id: true },
-      where: { purchasedAt: { gte: startOfMonth } },
-    }),
-    // Yearly sales
-    prisma.order.aggregate({
-      _sum: { amountPaid: true },
-      _count: { id: true },
-      where: { purchasedAt: { gte: startOfYear } },
-    }),
-    // Total Topup
-    prisma.topupTransaction.aggregate({
-      _sum: { amount: true },
-      where: { status: 'SUCCESS' },
-    }),
-    // Active orders
-    prisma.order.count({
-      where: { status: 'ACTIVE' },
-    }),
-    // Expiring soon
-    prisma.order.count({
-      where: {
-        status: 'ACTIVE',
-        expiresAt: { lte: in24Hours, gte: now },
-      },
-    }),
-    // Expired
-    prisma.order.count({
-      where: { status: 'EXPIRED' },
-    }),
-    // Servicing stock
-    prisma.accountStock.count({
-      where: { status: 'SERVICING' },
-    }),
-    // Bestsellers
+  const [metrics, bestsellers] = await Promise.all([
+    prisma.$queryRaw<any[]>`
+      SELECT 
+        COALESCE(SUM(CASE WHEN "purchasedAt" >= ${startOfDay} THEN "amountPaid" ELSE 0 END), 0)::float as daily_amount,
+        COUNT(CASE WHEN "purchasedAt" >= ${startOfDay} THEN 1 END)::int as daily_count,
+        COALESCE(SUM(CASE WHEN "purchasedAt" >= ${startOfMonth} THEN "amountPaid" ELSE 0 END), 0)::float as monthly_amount,
+        COUNT(CASE WHEN "purchasedAt" >= ${startOfMonth} THEN 1 END)::int as monthly_count,
+        COALESCE(SUM(CASE WHEN "purchasedAt" >= ${startOfYear} THEN "amountPaid" ELSE 0 END), 0)::float as yearly_amount,
+        COUNT(CASE WHEN "purchasedAt" >= ${startOfYear} THEN 1 END)::int as yearly_count,
+        COUNT(CASE WHEN status = 'ACTIVE' THEN 1 END)::int as active_orders,
+        COUNT(CASE WHEN status = 'ACTIVE' AND "expiresAt" <= ${in24Hours} AND "expiresAt" >= ${now} THEN 1 END)::int as expiring_soon,
+        COUNT(CASE WHEN status = 'EXPIRED' THEN 1 END)::int as expired_orders,
+        (SELECT COALESCE(SUM(amount), 0)::float FROM "TopupTransaction" WHERE status = 'SUCCESS') as total_topup,
+        (SELECT COUNT(*)::int FROM "AccountStock" WHERE status = 'SERVICING') as servicing_queue
+      FROM "Order";
+    `,
     prisma.product.findMany({
-      include: {
+      select: {
+        id: true,
+        name: true,
+        price: true,
         _count: {
           select: { orders: true },
         },
@@ -257,26 +247,64 @@ export async function getAdminDashboardStats() {
     }),
   ]);
 
-  return {
+  const o = metrics[0] || {};
+  const stats = {
     sales: {
-      daily: { amount: dailySales._sum.amountPaid || 0, count: dailySales._count.id },
-      monthly: { amount: monthlySales._sum.amountPaid || 0, count: monthlySales._count.id },
-      yearly: { amount: yearlySales._sum.amountPaid || 0, count: yearlySales._count.id },
-      totalTopup: totalTopup._sum.amount || 0,
+      daily: { amount: Number(o.daily_amount) || 0, count: Number(o.daily_count) || 0 },
+      monthly: { amount: Number(o.monthly_amount) || 0, count: Number(o.monthly_count) || 0 },
+      yearly: { amount: Number(o.yearly_amount) || 0, count: Number(o.yearly_count) || 0 },
+      totalTopup: Number(o.total_topup) || 0,
     },
     subscriptions: {
-      active: activeOrdersCount,
-      expiringSoon: expiringSoonCount,
-      expired: expiredCount,
-      servicingQueue: servicingStockCount,
+      active: Number(o.active_orders) || 0,
+      expiringSoon: Number(o.expiring_soon) || 0,
+      expired: Number(o.expired_orders) || 0,
+      servicingQueue: Number(o.servicing_queue) || 0,
     },
-    bestsellers: products.map((p) => ({
+    bestsellers: bestsellers.map((p) => ({
       id: p.id,
       name: p.name,
       price: p.price,
       orderCount: p._count.orders,
     })),
   };
+
+  globalAdminStatsCache.__mikiAdminStatsCache = {
+    data: stats,
+    timestamp: Date.now(),
+  };
+
+  return stats;
+}
+
+// 1. Dashboard Metrics (Daily, Monthly, Yearly Sales & Bestsellers)
+export async function getAdminDashboardStats(forceRefresh = false) {
+  await requireAdmin();
+
+  // Background sync throttled (0ms wait, completely non-blocking)
+  syncExpiredOrdersAndStocksThrottled();
+
+  const cached = globalAdminStatsCache.__mikiAdminStatsCache;
+  const nowMs = Date.now();
+
+  // If cached and fresh (< 60s), return immediately (0ms)
+  if (!forceRefresh && cached && nowMs - cached.timestamp < STATS_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  // Stale-While-Revalidate: If stale cache exists, return immediately (0ms) and revalidate in background
+  if (!forceRefresh && cached) {
+    if (!isFetchingStats) {
+      isFetchingStats = true;
+      fetchFreshStats().catch((err) => console.error('Background revalidate stats error:', err)).finally(() => {
+        isFetchingStats = false;
+      });
+    }
+    return cached.data;
+  }
+
+  // Cold start (no cache yet): fetch fresh
+  return await fetchFreshStats();
 }
 
 // 2. User & Credit Management with Audit Logs
@@ -331,6 +359,7 @@ export async function adminResetUserPasswordAction(userId: string, newPassword: 
     where: { id: userId },
     data: { passwordHash },
   });
+  invalidateUserCache(userId);
 
   await prisma.auditLog.create({
     data: {
@@ -376,13 +405,15 @@ export async function adjustUserCreditAction(userId: string, delta: number, reas
     return updated;
   });
 
+  invalidateUserCache(userId);
+
   return { success: true, user: updatedUser };
 }
 
 // 3. Stock Management & Servicing Queue (Recycle expired accounts)
 export async function getAdminStocks() {
   await requireAdmin();
-  await syncExpiredOrdersAndStocks();
+  syncExpiredOrdersAndStocksThrottled();
 
   const stocks = await prisma.accountStock.findMany({
     include: {
@@ -520,6 +551,7 @@ export async function addStockAccountAction(data: {
       },
     });
 
+    invalidateStoreCache();
     revalidatePath('/');
     revalidatePath('/admin');
 
@@ -713,6 +745,7 @@ export async function deleteStockAccountAction(stockId: string): Promise<{ succe
     });
 
     revalidatePath('/admin');
+    invalidateStoreCache();
     revalidatePath('/');
 
     return { success: true };
@@ -827,6 +860,7 @@ export async function saveProductAction(data: {
       data: productData,
     });
     revalidatePath('/admin');
+    invalidateStoreCache();
     revalidatePath('/');
 
     return { success: true, product: updated };
@@ -835,6 +869,7 @@ export async function saveProductAction(data: {
       data: productData,
     });
     revalidatePath('/admin');
+    invalidateStoreCache();
     revalidatePath('/');
 
     return { success: true, product: created };
@@ -910,6 +945,7 @@ export async function deleteProductAction(productId: string): Promise<{ success:
     });
 
     revalidatePath('/admin');
+    invalidateStoreCache();
     revalidatePath('/');
 
     return { success: true };
@@ -943,6 +979,7 @@ export async function createCategoryAction(data: { name: string; iconName?: stri
       },
     });
 
+    invalidateStoreCache();
     revalidatePath('/');
     revalidatePath('/admin');
     return { success: true, category };
@@ -979,6 +1016,7 @@ export async function updateCategoryAction(
       },
     });
 
+    invalidateStoreCache();
     revalidatePath('/');
     revalidatePath('/admin');
     return { success: true, category };
@@ -1015,6 +1053,7 @@ export async function deleteCategoryAction(id: string) {
       },
     });
 
+    invalidateStoreCache();
     revalidatePath('/');
     revalidatePath('/admin');
     return { success: true };
@@ -1078,7 +1117,7 @@ export async function updateStoreSettingsAction(data: Partial<{
 // 6. Orders & Stock Cut Management (Who bought what account/email/pass/screen)
 export async function getAdminOrders() {
   await requireAdmin();
-  await syncExpiredOrdersAndStocks();
+  syncExpiredOrdersAndStocksThrottled();
   const orders = await prisma.order.findMany({
     include: {
       user: true,
@@ -1187,6 +1226,7 @@ export async function deleteAdminOrderAction(
 
     revalidatePath('/admin');
     revalidatePath('/orders');
+    invalidateStoreCache();
     revalidatePath('/');
     return { success: true, amountPaid: order.amountPaid, slotId: order.profileSlotId, userId: order.userId };
   } catch (err: any) {

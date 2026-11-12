@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { Navbar } from '@/components/Navbar';
 import { redirect } from 'next/navigation';
+import { getStoreSettingCached } from '@/lib/storeCache';
 import { TopupClient } from './TopupClient';
 
 
@@ -13,9 +14,7 @@ export default async function TopupPage() {
   }
 
   const [storeSetting, bankAccounts, recentTopups] = await Promise.all([
-    prisma.storeSetting.findUnique({
-      where: { id: 'default' },
-    }),
+    getStoreSettingCached(),
     prisma.bankAccount.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },

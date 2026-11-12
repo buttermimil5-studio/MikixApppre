@@ -47,6 +47,27 @@ export async function verifySessionToken(token: string): Promise<UserSession | n
   }
 }
 
+interface UserCacheEntry {
+  user: any;
+  timestamp: number;
+}
+
+const globalUserCache = global as unknown as {
+  __mikiUserCache?: Map<string, UserCacheEntry>;
+};
+
+if (!globalUserCache.__mikiUserCache) {
+  globalUserCache.__mikiUserCache = new Map<string, UserCacheEntry>();
+}
+
+export function invalidateUserCache(userId?: string) {
+  if (userId) {
+    globalUserCache.__mikiUserCache?.delete(userId);
+  } else {
+    globalUserCache.__mikiUserCache?.clear();
+  }
+}
+
 export const getCurrentUser = cache(async () => {
   try {
     const cookieStore = await cookies();
@@ -55,6 +76,12 @@ export const getCurrentUser = cache(async () => {
 
     const session = await verifySessionToken(token);
     if (!session) return null;
+
+    const now = Date.now();
+    const cached = globalUserCache.__mikiUserCache?.get(session.id);
+    if (cached && now - cached.timestamp < 15000) {
+      return cached.user;
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: session.id },
@@ -70,6 +97,13 @@ export const getCurrentUser = cache(async () => {
         frameAccessory: true,
       },
     });
+
+    if (user) {
+      globalUserCache.__mikiUserCache?.set(session.id, {
+        user,
+        timestamp: now,
+      });
+    }
 
     return user;
   } catch (error) {

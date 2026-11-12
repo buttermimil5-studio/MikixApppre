@@ -1,80 +1,17 @@
 import React from 'react';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { Navbar } from '@/components/Navbar';
 import { StoreHero } from '@/components/StoreHero';
 import { ProductCatalog } from '@/components/ProductCatalog';
 import { ShokupanIcon } from '@/components/BakeryLineIcons';
-import { unstable_cache } from 'next/cache';
+import { getStoreDataCached } from '@/lib/storeCache';
 
 export const revalidate = 15;
-
-async function getStoreData() {
-  const [storeSetting, categories, contacts, rawProducts, bankAccounts] = await Promise.all([
-    prisma.storeSetting.findUnique({
-      where: { id: 'default' },
-    }),
-    prisma.category.findMany({
-      orderBy: { sortOrder: 'asc' },
-    }),
-    prisma.storeContact.findMany({
-      orderBy: { sortOrder: 'asc' },
-    }),
-    prisma.product.findMany({
-      where: { isActive: true },
-      include: {
-        category: true,
-        accountStocks: {
-          where: { status: { in: ['ACTIVE', 'FULL'] } },
-          select: {
-            profileSlots: {
-              where: { status: 'AVAILABLE' },
-              select: { productId: true },
-            },
-          },
-        },
-        assignedSlots: {
-          where: {
-            status: 'AVAILABLE',
-            accountStock: { status: { in: ['ACTIVE', 'FULL'] } },
-          },
-          select: { id: true },
-        },
-      },
-      orderBy: [{ isBestseller: 'desc' }, { createdAt: 'desc' }],
-    }),
-    prisma.bankAccount.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    }),
-  ]);
-
-  const activeSetting = storeSetting || {
-    id: 'default',
-    storeName: 'Miki App Store',
-    isOpen: true,
-    closedNotice: null,
-    slip2goSecretKey: null,
-  };
-
-  return { storeSetting: activeSetting, categories, contacts, rawProducts, bankAccounts };
-}
-
-const getCachedStoreData = unstable_cache(
-  async () => {
-    return getStoreData();
-  },
-  ['miki-home-store-data'],
-  {
-    revalidate: 15,
-    tags: ['store-data', 'products'],
-  }
-);
 
 export default async function HomePage() {
   const [user, storeData] = await Promise.all([
     getCurrentUser(),
-    getCachedStoreData(),
+    getStoreDataCached(),
   ]);
 
   const { storeSetting, categories, contacts, rawProducts, bankAccounts } = storeData;

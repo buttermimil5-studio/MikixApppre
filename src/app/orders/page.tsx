@@ -1,9 +1,9 @@
 import React from 'react';
-import prisma from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { Navbar } from '@/components/Navbar';
 import { redirect } from 'next/navigation';
 import { getUserOrdersAction } from '@/lib/actions/purchaseActions';
+import { getStoreSettingCached } from '@/lib/storeCache';
 import { OrdersClient } from './OrdersClient';
 
 
@@ -14,9 +14,7 @@ export default async function OrdersPage() {
   }
 
   const [storeSetting, ordersRes] = await Promise.all([
-    prisma.storeSetting.findUnique({
-      where: { id: 'default' },
-    }),
+    getStoreSettingCached(),
     getUserOrdersAction(),
   ]);
   const orders = ordersRes.orders || [];

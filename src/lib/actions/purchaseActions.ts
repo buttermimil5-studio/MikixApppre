@@ -1,9 +1,10 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, invalidateUserCache } from '@/lib/auth';
 import { decryptCredentials, decryptStockCredentials } from '@/lib/crypto';
 import { revalidatePath } from 'next/cache';
+import { invalidateStoreCache } from '@/lib/storeCache';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -212,8 +213,11 @@ export async function purchaseProductAction(
       };
     });
 
+    invalidateStoreCache();
     revalidatePath('/');
 
+
+    invalidateUserCache(user.id);
 
     return {
       success: true,
@@ -280,6 +284,8 @@ export async function requestOtpAction(orderId: string) {
     });
 
     const lineUrl = order.product.lineOaUrl || 'https://line.me';
+    invalidateUserCache(user.id);
+
     return {
       success: true,
       message: 'ระบบบันทึกคำขอ OTP เรียบร้อยแล้ว กำลังนำท่านไปยัง LINE Official Account เพื่อรับรหัส',
@@ -685,8 +691,8 @@ export async function guestPurchaseWithSlipAction(
       };
     });
 
+    invalidateStoreCache();
     revalidatePath('/');
-
 
     return {
       success: true,
