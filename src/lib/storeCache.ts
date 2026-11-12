@@ -5,9 +5,15 @@ interface CachedStoreData {
   timestamp: number;
 }
 
+interface CachedAdminInitData {
+  data: { storeSetting: any; categories: any[] };
+  timestamp: number;
+}
+
 const globalStoreCache = global as unknown as {
   __mikiStoreDataCache?: CachedStoreData;
   __mikiSettingCache?: { data: any; timestamp: number };
+  __mikiAdminInitCache?: CachedAdminInitData;
 };
 
 const CACHE_TTL_MS = 60 * 1000;
@@ -108,7 +114,34 @@ export async function getStoreSettingCached(forceRefresh = false) {
   return activeSetting;
 }
 
+export async function getAdminInitDataCached(forceRefresh = false) {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    globalStoreCache.__mikiAdminInitCache &&
+    now - globalStoreCache.__mikiAdminInitCache.timestamp < 120 * 1000
+  ) {
+    return globalStoreCache.__mikiAdminInitCache.data;
+  }
+
+  const [storeSetting, categories] = await Promise.all([
+    getStoreSettingCached(forceRefresh),
+    prisma.category.findMany({
+      orderBy: { sortOrder: 'asc' },
+    }),
+  ]);
+
+  const result = { storeSetting, categories };
+  globalStoreCache.__mikiAdminInitCache = {
+    data: result,
+    timestamp: now,
+  };
+
+  return result;
+}
+
 export function invalidateStoreCache() {
   delete globalStoreCache.__mikiStoreDataCache;
   delete globalStoreCache.__mikiSettingCache;
+  delete globalStoreCache.__mikiAdminInitCache;
 }

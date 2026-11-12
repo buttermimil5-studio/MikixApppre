@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { Navbar } from '@/components/Navbar';
 import { redirect } from 'next/navigation';
 import { getAdminDashboardStats } from '@/lib/actions/adminActions';
-import { getStoreDataCached } from '@/lib/storeCache';
+import { getAdminInitDataCached } from '@/lib/storeCache';
 import { AdminClient } from './AdminClient';
 
 export default async function AdminPage() {
@@ -12,12 +12,12 @@ export default async function AdminPage() {
     redirect('/login?redirect=/admin');
   }
 
-  const [stats, storeData] = await Promise.all([
+  const [stats, adminMeta] = await Promise.all([
     getAdminDashboardStats(),
-    getStoreDataCached(),
+    getAdminInitDataCached(),
   ]);
 
-  const { storeSetting, categories } = storeData;
+  const { storeSetting, categories } = adminMeta;
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col">

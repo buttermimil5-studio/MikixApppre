@@ -1479,16 +1479,22 @@ const DEFAULT_MUSIC_TRACKS = [
   },
 ];
 
+let cachedMusicTracks: { data: any[]; timestamp: number } | null = null;
+
 export async function getActiveMusicTracks() {
+  const now = Date.now();
+  if (cachedMusicTracks && now - cachedMusicTracks.timestamp < 5 * 60 * 1000) {
+    return cachedMusicTracks.data;
+  }
+
   try {
     const tracks = await prisma.musicTrack.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
-    if (tracks.length === 0) {
-      return DEFAULT_MUSIC_TRACKS;
-    }
-    return tracks;
+    const result = tracks.length === 0 ? DEFAULT_MUSIC_TRACKS : tracks;
+    cachedMusicTracks = { data: result, timestamp: now };
+    return result;
   } catch (error) {
     console.error('Failed to get active music tracks:', error);
     return DEFAULT_MUSIC_TRACKS;
@@ -1572,6 +1578,7 @@ export async function saveMusicTrackAction(data: {
       },
     });
 
+    cachedMusicTracks = null;
     return { success: true };
   } catch (error: any) {
     console.error('Error saving music track:', error);
@@ -1595,6 +1602,7 @@ export async function deleteMusicTrackAction(trackId: string) {
       },
     });
 
+    cachedMusicTracks = null;
     return { success: true };
   } catch (error: any) {
     console.error('Error deleting music track:', error);
@@ -1609,6 +1617,7 @@ export async function toggleMusicTrackAction(trackId: string, isActive: boolean)
       where: { id: trackId },
       data: { isActive },
     });
+    cachedMusicTracks = null;
     return { success: true };
   } catch (error: any) {
     console.error('Error toggling music track:', error);
