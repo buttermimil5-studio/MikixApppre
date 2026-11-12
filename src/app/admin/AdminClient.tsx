@@ -33,6 +33,10 @@ import {
   saveMusicTrackAction,
   deleteMusicTrackAction,
   toggleMusicTrackAction,
+  adminResetUserPasswordAction,
+  createCategoryAction,
+  updateCategoryAction,
+  deleteCategoryAction,
 } from '@/lib/actions/adminActions';
 import {
   BarChart3,
@@ -376,6 +380,22 @@ export function AdminClient({
   const [prodIsBestseller, setProdIsBestseller] = useState(false);
   const [prodAppGroup, setProdAppGroup] = useState('');
   const [prodLoading, setProdLoading] = useState(false);
+
+  // Category Management States
+  const [categoriesList, setCategoriesList] = useState(categories || []);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [editCategoryItem, setEditCategoryItem] = useState<any | null>(null);
+  const [categoryNameInput, setCategoryNameInput] = useState('');
+  const [categoryIconInput, setCategoryIconInput] = useState('Folder');
+  const [categorySortOrderInput, setCategorySortOrderInput] = useState<number | string>(0);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+
+  // User Reset Password Modal States
+  const [resetPasswordUser, setResetPasswordUser] = useState<any | null>(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState('');
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState<string | null>(null);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
 
   // Bank Account Modal
   const [bankModal, setBankModal] = useState<any | null>(null);
@@ -884,6 +904,71 @@ export function AdminClient({
       }
     } else {
       alert(res.error || 'ลบคำสั่งซื้อไม่สำเร็จ');
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUser || !resetPasswordInput.trim()) return;
+    setResetPasswordLoading(true);
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+
+    const res = await adminResetUserPasswordAction(resetPasswordUser.id, resetPasswordInput.trim());
+    setResetPasswordLoading(false);
+
+    if (res.success) {
+      setResetPasswordSuccess(res.message || 'รีเซ็ตรหัสผ่านสำเร็จ');
+    } else {
+      setResetPasswordError(res.error || 'รีเซ็ตรหัสผ่านไม่สำเร็จ');
+    }
+  };
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryNameInput.trim()) return;
+    setCategoryLoading(true);
+
+    if (editCategoryItem?.id) {
+      const res = await updateCategoryAction(editCategoryItem.id, {
+        name: categoryNameInput.trim(),
+        iconName: categoryIconInput.trim() || 'Folder',
+        sortOrder: Number(categorySortOrderInput) || 0,
+      });
+      setCategoryLoading(false);
+      if (res.success && res.category) {
+        setCategoriesList(categoriesList.map((c: any) => (c.id === res.category.id ? res.category : c)));
+        setEditCategoryItem(null);
+        setCategoryNameInput('');
+      } else {
+        alert(res.error || 'แก้ไขหมวดหมู่ไม่สำเร็จ');
+      }
+    } else {
+      const res = await createCategoryAction({
+        name: categoryNameInput.trim(),
+        iconName: categoryIconInput.trim() || 'Folder',
+        sortOrder: Number(categorySortOrderInput) || 0,
+      });
+      setCategoryLoading(false);
+      if (res.success && res.category) {
+        setCategoriesList([...categoriesList, res.category]);
+        setCategoryNameInput('');
+        setCategorySortOrderInput(categoriesList.length + 1);
+      } else {
+        alert(res.error || 'สร้างหมวดหมู่ไม่สำเร็จ');
+      }
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    if (!confirm(`คุณต้องการลบหมวดหมู่ "${catName}" หรือไม่?`)) return;
+    setCategoryLoading(true);
+    const res = await deleteCategoryAction(catId);
+    setCategoryLoading(false);
+    if (res.success) {
+      setCategoriesList(categoriesList.filter((c: any) => c.id !== catId));
+    } else {
+      alert(res.error || 'ลบหมวดหมู่ไม่สำเร็จ');
     }
   };
 
@@ -1822,15 +1907,20 @@ export function AdminClient({
                         <span>หมดอายุรอบใช้งานแล้ว • รอเปลี่ยนรหัส & Recycle</span>
                       </span>
                     ) : stock.accountCutoffTime ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#FFE8D6] text-[#6D4C41] border border-[#FFCDB2] font-black shadow-xs">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFE8D6] text-[#6D4C41] border border-[#FFCDB2] font-black shadow-xs">
                         <Clock className="w-3.5 h-3.5 text-[#D84315]" />
                         <span>
-                          เวลาตัดรอบทั้งบัญชี:{' '}
+                          ตัดรอบจอสุดท้าย:{' '}
+                          {new Date(stock.accountCutoffTime).toLocaleDateString('th-TH', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: '2-digit',
+                          })}{' '}
                           {new Date(stock.accountCutoffTime).toLocaleTimeString('th-TH', {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}{' '}
-                          น. (เมื่อจอสุดท้ายหมดอายุ)
+                          น.
                         </span>
                       </span>
                     ) : null}
@@ -1917,8 +2007,51 @@ export function AdminClient({
                           <div className="text-[10px] text-[#9CA3AF] mt-1">ไม่มี PIN</div>
                         )}
                         {slot.assignedUser && (
-                          <div className="text-[10px] text-[#8D6E63] mt-0.5 truncate">
-                            ผู้ซื้อ: @{slot.assignedUser} ({slot.orderNumber})
+                          <div className="text-[10px] text-[#8D6E63] mt-1 space-y-0.5 border-t border-current/10 pt-1">
+                            <div className="truncate font-semibold text-[#5D4037]">
+                              ผู้ซื้อ: @{slot.assignedUser} ({slot.orderNumber})
+                            </div>
+                            {slot.purchasedAt && (
+                              <div className="text-[9px] text-[#8D6E63]">
+                                ซื้อ: {new Date(slot.purchasedAt).toLocaleDateString('th-TH', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: '2-digit',
+                                })}
+                              </div>
+                            )}
+                            {slot.expiresAt && (
+                              <div className="text-[9px]">
+                                {(() => {
+                                  const expTime = new Date(slot.expiresAt).getTime();
+                                  const diff = expTime - Date.now();
+                                  const isExp = diff <= 0;
+                                  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                                  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                                  return (
+                                    <span className={isExp ? 'text-red-600 font-bold' : 'text-[#6D4C41]'}>
+                                      หมด: {new Date(slot.expiresAt).toLocaleDateString('th-TH', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        year: '2-digit',
+                                      })}{' '}
+                                      {new Date(slot.expiresAt).toLocaleTimeString('th-TH', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}{' '}
+                                      น.
+                                      <span className="block font-bold mt-0.5">
+                                        {isExp
+                                          ? '(หมดอายุแล้ว)'
+                                          : days > 0
+                                          ? `(เหลือ ${days} วัน ${hours} ชม.)`
+                                          : `(เหลือ ${hours} ชม.)`}
+                                      </span>
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1965,12 +2098,26 @@ export function AdminClient({
       {/* TAB 3: PRODUCTS & CATEGORIES */}
       {activeTab === 'PRODUCTS' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-[#5D4037]">จัดการสินค้าและหมวดหมู่</h2>
-              <p className="text-xs text-[#8D6E63]">เปิด–ปิดการขาย แก้ไขราคา กฎ และวิธีใช้งาน</p>
+              <p className="text-xs text-[#8D6E63]">เปิด–ปิดการขาย แก้ไขราคา กฎ และจัดการหมวดหมู่สินค้า</p>
             </div>
-            <button
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryModalOpen(true);
+                  setEditCategoryItem(null);
+                  setCategoryNameInput('');
+                  setCategorySortOrderInput(categoriesList.length + 1);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3] shadow-xs active:scale-95 transition-all"
+              >
+                <Layers className="w-4 h-4 text-[#E5989B]" />
+                <span>จัดการหมวดหมู่ ({categoriesList.length})</span>
+              </button>
+              <button
               onClick={() => {
                 setEditProductModal({ isNew: true });
                 setProdName('');
@@ -1998,6 +2145,7 @@ export function AdminClient({
               <span>สร้างสินค้าใหม่</span>
             </button>
           </div>
+        </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {products.map((p) => (
@@ -2112,6 +2260,38 @@ export function AdminClient({
                       แก้ไขรายละเอียด
                     </button>
                     <button
+                      type="button"
+                      onClick={() => {
+                        setEditProductModal({ isNew: true });
+                        setProdName(`${p.name} (สำเนา)`);
+                        setProdPrice(p.price);
+                        setProdRetailPrice(p.retailPrice ?? '');
+                        setProdDuration(p.durationDays);
+                        setProdCategory(p.categoryId);
+                        setProdImage(p.imageUrl);
+                        const rawRules = p.rules || '';
+                        const groupMatch = rawRules.match(/<!--group:(.*?)-->/);
+                        setProdAppGroup(groupMatch ? groupMatch[1].trim() : (p.appGroup || ''));
+                        setProdRules(rawRules.replace(/<!--group:.*?-->\r?\n?/, '').trim());
+                        setProdGuide(p.usageGuide);
+                        setProdOtp(p.otpEnabled);
+                        setProdLineOa(p.lineOaUrl || '');
+                        setProdCutoffType(p.cutoffType || 'ROUND_UP_HOUR');
+                        setProdHasProfilePin(p.hasProfilePin ?? false);
+                        setProdDefaultSlotCount(p.defaultSlotCount ?? 1);
+                        setProdSharingTypeNote(p.sharingTypeNote || '');
+                        setProdAddonEnabled(p.addonEnabled ?? false);
+                        setProdAddonName(p.addonName || 'รับประกันเคลม');
+                        setProdAddonPrice(p.addonPrice ?? 5);
+                        setProdIsBestseller(p.isBestseller ?? false);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold text-[#6D4C41] bg-[#FFF8F3] hover:bg-[#FFEFE8] border border-[#FFD9CE] transition-all"
+                      title="คัดลอกสินค้านี้เพื่อสร้างเป็นสินค้าใหม่"
+                    >
+                      <Copy className="w-3 h-3 text-[#D97706]" />
+                      <span>คัดลอก</span>
+                    </button>
+                    <button
                       onClick={() => handleDeleteProduct(p.id, p.name)}
                       className="p-1 rounded-md text-[#E11D48] hover:bg-[#FFF1F2] transition-colors"
                       title="ลบสินค้านี้"
@@ -2164,19 +2344,39 @@ export function AdminClient({
                     <td className="py-3 font-black text-[#E5989B] text-sm">
                       {u.creditBalance.toLocaleString()} ฿
                     </td>
-                    <td className="py-3 font-bold">{u._count.orders} รายการ</td>
+                    <td className="py-3">
+                      <div className="font-bold">{u._count.orders} รายการ</div>
+                      {u.monthlyOrdersCount !== undefined && (
+                        <div className="text-[10px] text-[#8D6E63]">เดือนนี้: {u.monthlyOrdersCount} รายการ</div>
+                      )}
+                    </td>
                     <td className="py-3 text-right">
-                      <button
-                        onClick={() => {
-                          setCreditModalUser(u);
-                          setCreditType('ADD');
-                          setCreditAmount(100);
-                          setCreditReason('');
-                        }}
-                        className="px-3 py-1.5 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFEFE8]"
-                      >
-                        เติม / หักเครดิต
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetPasswordUser(u);
+                            setResetPasswordInput('');
+                            setResetPasswordError(null);
+                            setResetPasswordSuccess(null);
+                          }}
+                          className="px-2.5 py-1.5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#E8DCCF] hover:bg-[#FFF8F3] transition-colors"
+                          title="ตั้งรหัสผ่านใหม่ให้ตัวแทนเมื่อลืมรหัส"
+                        >
+                          รีเซ็ตรหัส
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCreditModalUser(u);
+                            setCreditType('ADD');
+                            setCreditAmount(100);
+                            setCreditReason('');
+                          }}
+                          className="px-3 py-1.5 rounded-full text-xs font-bold bg-[#FFF8F3] text-[#E5989B] border border-[#FFD9CE] hover:bg-[#FFEFE8]"
+                        >
+                          เติม / หักเครดิต
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -3577,7 +3777,7 @@ export function AdminClient({
                     onChange={(e) => setProdCategory(e.target.value)}
                     className="w-full miki-input text-xs font-bold"
                   >
-                    {categories.map((c) => (
+                    {categoriesList.map((c: any) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
@@ -4937,6 +5137,230 @@ export function AdminClient({
                   ปิดหน้าต่าง
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESET USER PASSWORD */}
+      {resetPasswordUser && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Key className="w-5 h-5 text-[#FFB4A2]" />
+                <span>ตั้งรหัสผ่านใหม่: @{resetPasswordUser.username}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setResetPasswordUser(null)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleResetPassword} className="p-6 space-y-4">
+              <div className="p-3 bg-[#FFF8F3] rounded-2xl border border-[#FFD9CE] text-xs text-[#8D6E63] space-y-1">
+                <p className="font-bold text-[#5D4037]">หมายเหตุเกี่ยวกับความปลอดภัย:</p>
+                <p>รหัสผ่านเดิมถูกเข้ารหัสไว้เพื่อความปลอดภัย ไม่สามารถเรียกดูได้ คุณสามารถตั้งรหัสผ่านใหม่ให้กับตัวแทนได้ทันที</p>
+              </div>
+
+              {resetPasswordSuccess && (
+                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-800 space-y-2">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-900">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>{resetPasswordSuccess}</span>
+                  </p>
+                  <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-emerald-200">
+                    <span className="font-mono font-bold text-sm text-[#5D4037]">{resetPasswordInput}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetPasswordInput);
+                        alert('คัดลอกรหัสผ่านใหม่เรียบร้อย ส่งให้ตัวแทนได้ทันที');
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#FFF8F3] text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFEFE8]"
+                    >
+                      คัดลอกรหัส
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {resetPasswordError && (
+                <div className="p-3 bg-red-50 rounded-2xl border border-red-200 text-xs text-red-700 font-bold">
+                  {resetPasswordError}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#5D4037]">รหัสผ่านใหม่ *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const randomPass = 'Miki' + Math.floor(1000 + Math.random() * 9000);
+                      setResetPasswordInput(randomPass);
+                    }}
+                    className="text-[11px] font-bold text-[#E5989B] hover:underline"
+                  >
+                    สุ่มรหัสผ่านอัตโนมัติ
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={resetPasswordInput}
+                  onChange={(e) => setResetPasswordInput(e.target.value)}
+                  placeholder="เช่น 123456 หรือ Miki8899"
+                  className="w-full miki-input text-xs font-mono font-bold"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={resetPasswordLoading || !resetPasswordInput.trim()}
+                  className="flex-1 py-2.5 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] disabled:opacity-50 transition-colors shadow-2xs"
+                >
+                  {resetPasswordLoading ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่านใหม่'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResetPasswordUser(null)}
+                  className="py-2.5 px-5 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                >
+                  ปิด
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CATEGORY MANAGEMENT */}
+      {categoryModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4 sm:p-6 bg-[#5D4037]/50 backdrop-blur-xs flex min-h-full items-start sm:items-center justify-center">
+          <div className="w-full max-w-lg bg-white rounded-3xl border border-[#E8DCCF] shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden">
+            <div className="px-6 py-4 bg-[#FFF8F3] border-b border-[#FFD9CE] flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
+              <h3 className="font-extrabold text-base text-[#5D4037] flex items-center gap-2">
+                <Layers className="w-5 h-5 text-[#FFB4A2]" />
+                <span>จัดการหมวดหมู่สินค้า</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-white text-[#8D6E63] hover:text-[#5D4037] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5">
+              {/* Form to Create / Edit Category */}
+              <form onSubmit={handleSaveCategory} className="p-4 rounded-2xl bg-[#FFFDF7] border border-[#E8DCCF] space-y-3">
+                <h4 className="text-xs font-black text-[#5D4037]">
+                  {editCategoryItem ? `แก้ไขหมวดหมู่: ${editCategoryItem.name}` : 'เพิ่มหมวดหมู่ใหม่'}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-[11px] font-bold text-[#8D6E63]">ชื่อหมวดหมู่ *</label>
+                    <input
+                      type="text"
+                      required
+                      value={categoryNameInput}
+                      onChange={(e) => setCategoryNameInput(e.target.value)}
+                      placeholder="เช่น แอพแต่งรูป, บันเทิง, VPN"
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-[#8D6E63]">ลำดับ (Sort)</label>
+                    <input
+                      type="number"
+                      value={categorySortOrderInput}
+                      onChange={(e) => setCategorySortOrderInput(e.target.value)}
+                      className="w-full miki-input text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={categoryLoading || !categoryNameInput.trim()}
+                    className="flex-1 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] disabled:opacity-50 transition-colors shadow-2xs"
+                  >
+                    {categoryLoading ? 'กำลังบันทึก...' : editCategoryItem ? 'บันทึกการแก้ไข' : 'เพิ่มหมวดหมู่นี้'}
+                  </button>
+                  {editCategoryItem && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditCategoryItem(null);
+                        setCategoryNameInput('');
+                        setCategorySortOrderInput(categoriesList.length + 1);
+                      }}
+                      className="py-2 px-4 rounded-full text-xs font-bold bg-white text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFF8F3]"
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {/* Existing Categories Table */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black text-[#5D4037]">หมวดหมู่ทั้งหมดในระบบ ({categoriesList.length})</h4>
+                <div className="border border-[#E8DCCF] rounded-2xl overflow-hidden divide-y divide-[#E8DCCF]/60">
+                  {categoriesList.map((cat: any) => {
+                    const linkedProductsCount = products.filter((p: any) => p.categoryId === cat.id).length;
+                    return (
+                      <div key={cat.id} className="p-3 bg-white flex items-center justify-between gap-3 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-bold text-[#5D4037]">{cat.name}</span>
+                          <span className="text-[10px] text-[#8D6E63] ml-2 font-normal">
+                            (ลำดับ: {cat.sortOrder || 0} • สินค้าผูกอยู่ {linkedProductsCount} รายการ)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditCategoryItem(cat);
+                              setCategoryNameInput(cat.name);
+                              setCategoryIconInput(cat.iconName || 'Folder');
+                              setCategorySortOrderInput(cat.sortOrder || 0);
+                            }}
+                            className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#FFF8F3] text-[#5D4037] border border-[#FFD9CE] hover:bg-[#FFEFE8]"
+                          >
+                            แก้ไข
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                            className="p-1 rounded-md text-[#E11D48] hover:bg-[#FFF1F2] transition-colors"
+                            title="ลบหมวดหมู่นี้"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 bg-[#FAF7F2] border-t border-[#F5EBE1] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(false)}
+                className="px-5 py-2 rounded-full text-xs font-bold bg-[#FFB4A2] text-white hover:bg-[#E5989B] shadow-2xs"
+              >
+                ปิดหน้าต่าง
+              </button>
             </div>
           </div>
         </div>

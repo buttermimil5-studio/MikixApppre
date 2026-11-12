@@ -18,29 +18,34 @@ export default async function ProfilePage() {
     redirect('/login?redirect=/profile');
   }
 
-  // Calculate monthly stats for the current agent & agent leaderboard
+  // Calculate monthly & all-time stats for the current agent & agent leaderboard
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  // Group all orders by user for this month to determine agent rankings
-  const monthlyAgentOrders = await prisma.order.groupBy({
-    by: ['userId'],
-    where: {
-      purchasedAt: {
-        gte: startOfMonth,
-        lte: endOfMonth,
+  // Group all orders by user for this month to determine agent rankings, plus count all-time orders
+  const [totalOrdersCount, monthlyAgentOrders] = await Promise.all([
+    prisma.order.count({
+      where: { userId: user.id },
+    }),
+    prisma.order.groupBy({
+      by: ['userId'],
+      where: {
+        purchasedAt: {
+          gte: startOfMonth,
+          lte: endOfMonth,
+        },
+        status: { in: ['ACTIVE', 'EXPIRED'] },
       },
-      status: { in: ['ACTIVE', 'EXPIRED'] },
-    },
-    _count: { id: true },
-    _sum: { amountPaid: true },
-    orderBy: {
-      _count: {
-        id: 'desc',
+      _count: { id: true },
+      _sum: { amountPaid: true },
+      orderBy: {
+        _count: {
+          id: 'desc',
+        },
       },
-    },
-  });
+    }),
+  ]);
 
   const agentIndex = monthlyAgentOrders.findIndex((item) => item.userId === user.id);
   const monthlyRank = agentIndex !== -1 ? agentIndex + 1 : null;
@@ -50,6 +55,7 @@ export default async function ProfilePage() {
 
   const agentStats = {
     creditBalance: user.creditBalance,
+    totalOrdersCount,
     monthlyOrdersCount,
     monthlySalesAmount,
     monthlyRank,

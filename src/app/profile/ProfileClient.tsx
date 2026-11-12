@@ -17,6 +17,7 @@ import {
 
 interface AgentStats {
   creditBalance: number;
+  totalOrdersCount?: number;
   monthlyOrdersCount: number;
   monthlySalesAmount: number;
   monthlyRank: number | null;
@@ -131,9 +132,14 @@ export function ProfileClient({ user, agentStats }: ProfileClientProps) {
 
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-bold text-[#5D4037]">2. ออเดอร์:</span>
-                  <span className="font-bold text-[#5D4037]">
-                    ขายได้ {agentStats?.monthlyOrdersCount || 0} ออเดอร์
-                  </span>
+                  <div className="text-right">
+                    <span className="font-bold text-[#5D4037]">
+                      ทั้งหมด {agentStats?.totalOrdersCount ?? 0} รายการ
+                    </span>
+                    <span className="block text-[11px] text-[#8D6E63] font-normal">
+                      (เดือนนี้ {agentStats?.monthlyOrdersCount || 0} รายการ)
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#F5EBE1]">

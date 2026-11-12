@@ -5,9 +5,9 @@ import { Navbar } from '@/components/Navbar';
 import { StoreHero } from '@/components/StoreHero';
 import { ProductCatalog } from '@/components/ProductCatalog';
 import { ShokupanIcon } from '@/components/BakeryLineIcons';
+import { unstable_cache } from 'next/cache';
 
-
-export const revalidate = 5; // 5-second revalidation: Blazing-fast page loads (<20ms) with instant invalidation on purchase/restock
+export const revalidate = 15;
 
 async function getStoreData() {
   const [storeSetting, categories, contacts, rawProducts, bankAccounts] = await Promise.all([
@@ -60,10 +60,21 @@ async function getStoreData() {
   return { storeSetting: activeSetting, categories, contacts, rawProducts, bankAccounts };
 }
 
+const getCachedStoreData = unstable_cache(
+  async () => {
+    return getStoreData();
+  },
+  ['miki-home-store-data'],
+  {
+    revalidate: 15,
+    tags: ['store-data', 'products'],
+  }
+);
+
 export default async function HomePage() {
   const [user, storeData] = await Promise.all([
     getCurrentUser(),
-    getStoreData(),
+    getCachedStoreData(),
   ]);
 
   const { storeSetting, categories, contacts, rawProducts, bankAccounts } = storeData;

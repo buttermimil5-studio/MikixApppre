@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
 import { getCurrentUser } from '@/lib/auth';
 import {
   encryptCredentials,
@@ -8,7 +9,7 @@ import {
   encryptStockCredentials,
   decryptStockCredentials,
 } from '@/lib/crypto';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 
 async function requireAdmin() {
   const user = await getCurrentUser();
@@ -37,8 +38,12 @@ export async function syncExpiredOrdersAndStocks() {
         status: 'ACTIVE',
         expiresAt: { lte: now },
       },
-      include: {
-        profileSlot: true,
+      select: {
+        id: true,
+        profileSlotId: true,
+        profileSlot: {
+          select: { accountStockId: true },
+        },
       },
     });
 
@@ -46,40 +51,53 @@ export async function syncExpiredOrdersAndStocks() {
       return;
     }
 
-    const affectedStockIds = new Set<string>();
+    const expiredOrderIds = expiredOrders.map((exp) => exp.id);
+    const expiredSlotIds = expiredOrders
+      .map((exp) => exp.profileSlotId)
+      .filter(Boolean) as string[];
 
-    for (const exp of expiredOrders) {
-      await prisma.$transaction(async (tx) => {
-        await tx.order.update({
-          where: { id: exp.id },
-          data: { status: 'EXPIRED' },
-        });
+    // Batch update expired orders and slots
+    await prisma.$transaction([
+      prisma.order.updateMany({
+        where: { id: { in: expiredOrderIds } },
+        data: { status: 'EXPIRED' },
+      }),
+      prisma.accountProfileSlot.updateMany({
+        where: { id: { in: expiredSlotIds } },
+        data: { status: 'EXPIRED' },
+      }),
+    ]);
 
-        if (exp.profileSlotId) {
-          await tx.accountProfileSlot.update({
-            where: { id: exp.profileSlotId },
-            data: { status: 'EXPIRED' },
-          });
-        }
-      });
+    const affectedStockIds = Array.from(
+      new Set(
+        expiredOrders
+          .map((exp) => exp.profileSlot?.accountStockId)
+          .filter(Boolean) as string[]
+      )
+    );
 
-      if (exp.profileSlot?.accountStockId) {
-        affectedStockIds.add(exp.profileSlot.accountStockId);
-      }
-    }
-
-    // Check each affected stock: if no active orders remain, move to SERVICING
-    for (const stockId of affectedStockIds) {
-      const remainingActive = await prisma.order.count({
+    if (affectedStockIds.length > 0) {
+      // Find which affected stocks still have other active orders
+      const stillActiveOrders = await prisma.order.findMany({
         where: {
-          profileSlot: { accountStockId: stockId },
+          profileSlot: { accountStockId: { in: affectedStockIds } },
           status: 'ACTIVE',
+        },
+        select: {
+          profileSlot: {
+            select: { accountStockId: true },
+          },
         },
       });
 
-      if (remainingActive === 0) {
-        await prisma.accountStock.update({
-          where: { id: stockId },
+      const stillActiveStockIdSet = new Set(
+        stillActiveOrders.map((o) => o.profileSlot?.accountStockId).filter(Boolean)
+      );
+
+      const stocksToServicing = affectedStockIds.filter((id) => !stillActiveStockIdSet.has(id));
+      if (stocksToServicing.length > 0) {
+        await prisma.accountStock.updateMany({
+          where: { id: { in: stocksToServicing } },
           data: { status: 'SERVICING' },
         });
       }
@@ -96,28 +114,28 @@ export async function syncExpiredOrdersAndStocks() {
           },
         },
       },
-      include: {
+      select: {
+        id: true,
         profileSlots: {
-          include: {
+          select: {
             orders: {
               where: { status: 'ACTIVE' },
+              select: { id: true },
             },
           },
         },
       },
     });
 
-    for (const stock of finishedStocks) {
-      const activeCount = stock.profileSlots.reduce(
-        (sum, slot) => sum + slot.orders.length,
-        0
-      );
-      if (activeCount === 0) {
-        await prisma.accountStock.update({
-          where: { id: stock.id },
-          data: { status: 'SERVICING' },
-        });
-      }
+    const finishedStockIds = finishedStocks
+      .filter((s) => s.profileSlots.every((slot) => slot.orders.length === 0))
+      .map((s) => s.id);
+
+    if (finishedStockIds.length > 0) {
+      await prisma.accountStock.updateMany({
+        where: { id: { in: finishedStockIds } },
+        data: { status: 'SERVICING' },
+      });
     }
   } catch (error) {
     console.error('Error syncing expired orders and stocks:', error);
@@ -264,14 +282,65 @@ export async function getAdminDashboardStats() {
 // 2. User & Credit Management with Audit Logs
 export async function getAdminUsers() {
   await requireAdmin();
-  return prisma.user.findMany({
+  const { startOfMonth } = await getThailandDateBoundaries();
+  const users = await prisma.user.findMany({
     include: {
       _count: {
         select: { orders: true, topups: true },
       },
+      orders: {
+        where: {
+          purchasedAt: { gte: startOfMonth },
+          status: { in: ['ACTIVE', 'EXPIRED'] },
+        },
+        select: { id: true },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  return users.map((u) => ({
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    profileName: u.profileName,
+    salesChannel: u.salesChannel,
+    creditBalance: u.creditBalance,
+    avatarUrl: u.avatarUrl,
+    frameTheme: u.frameTheme,
+    frameAccessory: u.frameAccessory,
+    createdAt: u.createdAt.toISOString(),
+    _count: u._count,
+    monthlyOrdersCount: u.orders.length,
+  }));
+}
+
+export async function adminResetUserPasswordAction(userId: string, newPassword: string) {
+  const admin = await requireAdmin();
+  if (!newPassword || newPassword.trim().length < 4) {
+    return { success: false, error: 'รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 4 ตัวอักษร' };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    return { success: false, error: 'ไม่พบผู้ใช้นี้ในระบบ' };
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword.trim(), 10);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: admin.id,
+      action: 'USER_PASSWORD_RESET',
+      details: `แอดมิน ${admin.username} รีเซ็ตรหัสผ่านให้กับผู้ใช้ @${user.username}`,
+    },
+  });
+
+  return { success: true, message: `รีเซ็ตรหัสผ่านของ @${user.username} สำเร็จเรียบร้อย` };
 }
 
 export async function adjustUserCreditAction(userId: string, delta: number, reason: string) {
@@ -372,7 +441,9 @@ export async function getAdminStocks() {
           status: slot.status,
           assignedUser: activeOrder?.user?.username || null,
           orderNumber: activeOrder?.orderNumber || null,
-          expiresAt: activeOrder?.expiresAt?.toISOString() || null,
+          purchasedAt: activeOrder?.purchasedAt ? activeOrder.purchasedAt.toISOString() : null,
+          expiresAt: activeOrder?.expiresAt ? activeOrder.expiresAt.toISOString() : null,
+          orderStatus: activeOrder?.status || null,
         };
       }),
     };
@@ -845,6 +916,111 @@ export async function deleteProductAction(productId: string): Promise<{ success:
   } catch (err: any) {
     console.error('deleteProductAction error:', err);
     return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการลบสินค้า' };
+  }
+}
+
+// 4.1 Category Management
+export async function createCategoryAction(data: { name: string; iconName?: string; sortOrder?: number }) {
+  try {
+    const admin = await requireAdmin();
+    if (!data.name || data.name.trim().length === 0) {
+      return { success: false, error: 'กรุณาระบุชื่อหมวดหมู่' };
+    }
+
+    const category = await prisma.category.create({
+      data: {
+        name: data.name.trim(),
+        iconName: data.iconName || 'Folder',
+        sortOrder: Number(data.sortOrder) || 0,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'CATEGORY_CREATE',
+        details: `แอดมิน ${admin.username} สร้างหมวดหมู่ใหม่: ${category.name}`,
+      },
+    });
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, category };
+  } catch (err: any) {
+    console.error('createCategoryAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการสร้างหมวดหมู่' };
+  }
+}
+
+export async function updateCategoryAction(
+  id: string,
+  data: { name: string; iconName?: string; sortOrder?: number }
+) {
+  try {
+    const admin = await requireAdmin();
+    if (!data.name || data.name.trim().length === 0) {
+      return { success: false, error: 'กรุณาระบุชื่อหมวดหมู่' };
+    }
+
+    const category = await prisma.category.update({
+      where: { id },
+      data: {
+        name: data.name.trim(),
+        iconName: data.iconName || 'Folder',
+        sortOrder: Number(data.sortOrder) || 0,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'CATEGORY_UPDATE',
+        details: `แอดมิน ${admin.username} แก้ไขหมวดหมู่: ${category.name}`,
+      },
+    });
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true, category };
+  } catch (err: any) {
+    console.error('updateCategoryAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการแก้ไขหมวดหมู่' };
+  }
+}
+
+export async function deleteCategoryAction(id: string) {
+  try {
+    const admin = await requireAdmin();
+
+    const productCount = await prisma.product.count({
+      where: { categoryId: id },
+    });
+
+    if (productCount > 0) {
+      return {
+        success: false,
+        error: `ไม่สามารถลบหมวดหมู่นี้ได้เนื่องจากมีสินค้าผูกอยู่ ${productCount} รายการ กรุณาย้ายหรือลบสินค้าก่อน`,
+      };
+    }
+
+    const category = await prisma.category.delete({
+      where: { id },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: 'CATEGORY_DELETE',
+        details: `แอดมิน ${admin.username} ลบหมวดหมู่: ${category.name}`,
+      },
+    });
+
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true };
+  } catch (err: any) {
+    console.error('deleteCategoryAction error:', err);
+    return { success: false, error: err.message || 'เกิดข้อผิดพลาดในการลบหมวดหมู่' };
   }
 }
 

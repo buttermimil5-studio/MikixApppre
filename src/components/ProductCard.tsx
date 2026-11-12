@@ -34,6 +34,8 @@ export function ProductCard({
             <img
               src={product.imageUrl}
               alt={product.name}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover group-hover:scale-104 transition-transform duration-300"
             />
 
@@ -146,15 +148,17 @@ export function ProductCard({
         </div>
       </div>
 
-      <ProductModal
-        product={product}
-        user={user}
-        storeSetting={storeSetting}
-        bankAccounts={bankAccounts}
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onPurchaseSuccess={onBalanceUpdate}
-      />
+      {modalOpen && (
+        <ProductModal
+          product={product}
+          user={user}
+          storeSetting={storeSetting}
+          bankAccounts={bankAccounts}
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onPurchaseSuccess={onBalanceUpdate}
+        />
+      )}
     </>
   );
 }
