@@ -78,7 +78,6 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { BakeryLoadingModal } from '@/components/BakeryLoadingModal';
 import { isYouTubeUrl, extractYouTubeVideoId } from '@/lib/youtube';
 
 interface AdminClientProps {
@@ -1230,8 +1229,6 @@ export function AdminClient({
 
   return (
     <div className="space-y-6 relative">
-      {/* Minimalist Frosted Loading Modal for On-Demand Tab Fetching */}
-      {tabLoading && <BakeryLoadingModal message={loadingMessage} />}
 
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E8DCCF] pb-4">
