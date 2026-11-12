@@ -193,14 +193,14 @@ const globalAdminStatsCache = global as unknown as {
 
 const STATS_CACHE_TTL_MS = 60 * 1000;
 
-export function invalidateAdminStatsCache() {
+export async function invalidateAdminStatsCache() {
   delete globalAdminStatsCache.__mikiAdminStatsCache;
 }
 
 let lastSyncTimestamp = 0;
 const SYNC_THROTTLE_MS = 3 * 60 * 1000; // 3 minutes
 
-export function syncExpiredOrdersAndStocksThrottled() {
+export async function syncExpiredOrdersAndStocksThrottled() {
   const now = Date.now();
   if (now - lastSyncTimestamp < SYNC_THROTTLE_MS) return;
   lastSyncTimestamp = now;
